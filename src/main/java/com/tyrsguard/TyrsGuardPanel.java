@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.tyrsguard;
+package com.tyrsguard;
 
 import net.runelite.client.ui.PluginPanel;
 import javax.swing.*;
