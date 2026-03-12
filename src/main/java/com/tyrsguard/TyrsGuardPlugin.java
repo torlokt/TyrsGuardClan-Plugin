@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.tyrsguard;
+package com.tyrsguard;
 
 import com.google.inject.Provides;
 import javax.inject.Inject;
