@@ -110,7 +110,7 @@ public class TyrsGuardPlugin extends Plugin
         panel = new TyrsGuardPanel(config, this);
 
         final BufferedImage icon = ImageUtil.loadImageResource(getClass(),
-            "/net/runelite/client/plugins/tyrsguard/icon.png");
+    "/com/tyrsguard/icon.png");
 
         navButton = NavigationButton.builder()
             .tooltip("Tyrs Guard Clan")
