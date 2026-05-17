@@ -24,9 +24,13 @@ public class TyrsGuardPanel extends PluginPanel
     private JLabel progressLabel;
     private JButton refreshXpButton;
 
-    private JComboBox<String> categoryDropdown;
+    private JComboBox<String> topCategoryDropdown;
+    private JComboBox<String> subCategoryDropdown;
+    private JLabel subCategoryLabel;
     private JTextField donationGpField;
     private JLabel donationLabel;
+    private JTextField raidPartnerField;
+    private JLabel raidPartnerLabel;
     private JCheckBox staffPresentCheckbox;
     private JTextField staffNameField;
     private JLabel staffNameLabel;
@@ -46,8 +50,14 @@ public class TyrsGuardPanel extends PluginPanel
     private static final Color COL_TEXT = new Color(220, 220, 220);
     private static final Color COL_DIM  = new Color(140, 140, 140);
 
-    private static final String[] CATEGORIES = {
+    private static final String[] TOP_CATEGORIES = {
         "Select a category...",
+        "Clan Contributions",
+        "Personal Progression"
+    };
+
+    private static final String[] CLAN_CONTRIBUTIONS = {
+        "Select a type...",
         "Events Participation",
         "Events Win",
         "Recruiting",
@@ -55,7 +65,26 @@ public class TyrsGuardPanel extends PluginPanel
         "Hosting a Mass",
         "Hosting an Event",
         "Teaching a Raid",
-        "Participating in a Mass"
+        "Mass Participation",
+        "Hosting a Raid",
+        "Raid Participation",
+        "Learner Raid Participation",
+        "Leagues Participation",
+        "Deadman Participation"
+    };
+
+    private static final String[] PERSONAL_PROGRESSION = {
+        "Select a type...",
+        "Unique Item Drop",
+        "Pet Drop",
+        "Quest/Diary Completion",
+        "Achieved Level 99",
+        "Fire Cape",
+        "Infernal Cape",
+        "Quest Cape",
+        "Diary Cape",
+        "Music Cape",
+        "Max Cape"
     };
 
     public TyrsGuardPanel(TyrsGuardConfig config, TyrsGuardPlugin plugin)
@@ -68,7 +97,6 @@ public class TyrsGuardPanel extends PluginPanel
         // Wrapper that forces full viewport width
         JPanel wrapper = new JPanel(new GridBagLayout())
         {
-            
             @Override public Dimension getPreferredSize()
             {
                 Dimension d = super.getPreferredSize();
@@ -83,11 +111,11 @@ public class TyrsGuardPanel extends PluginPanel
         gbc.gridx = 0; gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0; gbc.insets = new Insets(0, 0, 6, 0);
 
-        wrapper.add(section("Tyrs Guard Clan", headerPanel()), gbc);
-        wrapper.add(section("Your XP & Rank",          xpPanel()),     gbc);
-        wrapper.add(section("Submission Details",       formPanel()),   gbc);
-        wrapper.add(section("Screenshot",               shotPanel()),   gbc);
-        wrapper.add(submitPanel(),                                       gbc);
+        wrapper.add(section("Tyrs Guard Clan",    headerPanel()), gbc);
+        wrapper.add(section("Your XP & Rank",     xpPanel()),     gbc);
+        wrapper.add(section("Submission Details",  formPanel()),   gbc);
+        wrapper.add(section("Screenshot",          shotPanel()),   gbc);
+        wrapper.add(submitPanel(),                                  gbc);
 
         // filler
         gbc.weighty = 1.0; gbc.fill = GridBagConstraints.BOTH;
@@ -120,7 +148,7 @@ public class TyrsGuardPanel extends PluginPanel
         return card;
     }
 
-    // ── Inner panels (all use GridBagLayout so they fill width) ───────────────
+    // ── Inner panels ──────────────────────────────────────────────────────────
 
     private JPanel headerPanel()
     {
@@ -167,20 +195,38 @@ public class TyrsGuardPanel extends PluginPanel
         JPanel p = inner();
         GridBagConstraints g = fillGbc();
 
-        categoryDropdown = new JComboBox<>(CATEGORIES);
-        styleCombo(categoryDropdown);
-        categoryDropdown.addActionListener(e -> onCategoryChanged());
+        // ── Top-level category dropdown ──
+        topCategoryDropdown = new JComboBox<>(TOP_CATEGORIES);
+        styleCombo(topCategoryDropdown);
+        topCategoryDropdown.addActionListener(e -> onTopCategoryChanged());
 
+        // ── Sub-category dropdown (hidden until top is chosen) ──
+        subCategoryLabel = lbl("Submission Type:", COL_TEXT, 11f);
+        subCategoryDropdown = new JComboBox<>(new String[]{ "Select a type..." });
+        styleCombo(subCategoryDropdown);
+        subCategoryDropdown.addActionListener(e -> onSubCategoryChanged());
+        subCategoryLabel.setVisible(false);
+        subCategoryDropdown.setVisible(false);
+
+        // ── Donation field ──
         donationLabel  = lbl("Donation Amount (GP):", COL_TEXT, 11f);
         donationGpField = input("e.g. 5000000");
         donationLabel.setVisible(false);
         donationGpField.setVisible(false);
 
+        // ── Raid partner field (Teaching a Raid / Learner Raid Participation) ──
+        raidPartnerLabel = lbl("Username of member you taught/who taught you:", COL_TEXT, 11f);
+        raidPartnerField = input("Enter their in-game / Discord username");
+        raidPartnerLabel.setVisible(false);
+        raidPartnerField.setVisible(false);
+
+        // ── Staff presence (Clan Contributions only) ──
         staffPresentCheckbox = new JCheckBox("Staff was present");
         staffPresentCheckbox.setBackground(BG_PANEL);
         staffPresentCheckbox.setForeground(COL_TEXT);
         staffPresentCheckbox.setFocusPainted(false);
         staffPresentCheckbox.addActionListener(e -> onStaffChanged());
+        staffPresentCheckbox.setVisible(false);
 
         staffNameLabel = lbl("Staff Member Name:", COL_TEXT, 11f);
         staffNameField = input("Enter staff name");
@@ -197,23 +243,31 @@ public class TyrsGuardPanel extends PluginPanel
         JScrollPane ds = new JScrollPane(detailsArea);
         ds.setBorder(BorderFactory.createLineBorder(new Color(70, 70, 70)));
 
-        p.add(lbl("Category:", COL_TEXT, 11f), g);
+        p.add(lbl("Category:", COL_TEXT, 11f),  g);
         g.insets = new Insets(3, 0, 0, 0);
-        p.add(categoryDropdown,    g);
+        p.add(topCategoryDropdown,               g);
         g.insets = new Insets(6, 0, 0, 0);
-        p.add(donationLabel,       g);
+        p.add(subCategoryLabel,                  g);
         g.insets = new Insets(3, 0, 0, 0);
-        p.add(donationGpField,     g);
+        p.add(subCategoryDropdown,               g);
         g.insets = new Insets(6, 0, 0, 0);
-        p.add(staffPresentCheckbox, g);
+        p.add(donationLabel,                     g);
+        g.insets = new Insets(3, 0, 0, 0);
+        p.add(donationGpField,                   g);
+        g.insets = new Insets(6, 0, 0, 0);
+        p.add(raidPartnerLabel,                  g);
+        g.insets = new Insets(3, 0, 0, 0);
+        p.add(raidPartnerField,                  g);
+        g.insets = new Insets(6, 0, 0, 0);
+        p.add(staffPresentCheckbox,              g);
         g.insets = new Insets(4, 0, 0, 0);
-        p.add(staffNameLabel,      g);
+        p.add(staffNameLabel,                    g);
         g.insets = new Insets(3, 0, 0, 0);
-        p.add(staffNameField,      g);
+        p.add(staffNameField,                    g);
         g.insets = new Insets(6, 0, 0, 0);
         p.add(lbl("Additional Details (optional):", COL_TEXT, 11f), g);
         g.insets = new Insets(3, 0, 0, 0);
-        p.add(ds,                  g);
+        p.add(ds,                                g);
         return p;
     }
 
@@ -318,11 +372,69 @@ public class TyrsGuardPanel extends PluginPanel
 
     // ── Events ────────────────────────────────────────────────────────────────
 
-    private void onCategoryChanged()
+    private void onTopCategoryChanged()
     {
-        boolean isDonation = "Donation".equals(categoryDropdown.getSelectedItem());
+        String top = (String) topCategoryDropdown.getSelectedItem();
+        boolean isClan     = "Clan Contributions".equals(top);
+        boolean isPersonal = "Personal Progression".equals(top);
+        boolean hasTop     = isClan || isPersonal;
+
+        // Populate sub-category dropdown based on top selection
+        subCategoryDropdown.removeAllItems();
+        if (isClan)
+        {
+            for (String s : CLAN_CONTRIBUTIONS) subCategoryDropdown.addItem(s);
+        }
+        else if (isPersonal)
+        {
+            for (String s : PERSONAL_PROGRESSION) subCategoryDropdown.addItem(s);
+        }
+
+        subCategoryLabel.setVisible(hasTop);
+        subCategoryDropdown.setVisible(hasTop);
+
+        // Staff presence only applies to Clan Contributions
+        staffPresentCheckbox.setVisible(isClan);
+        if (!isClan)
+        {
+            staffPresentCheckbox.setSelected(false);
+            staffNameLabel.setVisible(false);
+            staffNameField.setVisible(false);
+        }
+
+        // Reset donation fields when switching top category
+        donationLabel.setVisible(false);
+        donationGpField.setVisible(false);
+        donationGpField.setText("");
+
+        // Reset raid partner field when switching top category
+        raidPartnerLabel.setVisible(false);
+        raidPartnerField.setVisible(false);
+        raidPartnerField.setText("");
+
+        revalidate(); repaint();
+    }
+
+    private void onSubCategoryChanged()
+    {
+        String sub = (String) subCategoryDropdown.getSelectedItem();
+        boolean isDonation = "Donation".equals(sub);
+        boolean isTeaching = "Teaching a Raid".equals(sub);
+        boolean isLearner  = "Learner Raid Participation".equals(sub);
+        boolean needsPartner = isTeaching || isLearner;
+
         donationLabel.setVisible(isDonation);
         donationGpField.setVisible(isDonation);
+
+        raidPartnerLabel.setVisible(needsPartner);
+        raidPartnerField.setVisible(needsPartner);
+        if (needsPartner)
+        {
+            raidPartnerLabel.setText(isTeaching
+                ? "Username of member you taught:"
+                : "Username of member who taught you:");
+        }
+
         revalidate(); repaint();
     }
 
@@ -354,9 +466,22 @@ public class TyrsGuardPanel extends PluginPanel
 
     private void submit()
     {
-        String category = (String) categoryDropdown.getSelectedItem();
-        if (category == null || category.equals("Select a category...")) { status("Please select a category.", Color.RED); return; }
-        if (capturedScreenshot == null) { status("Please capture a screenshot first.", Color.RED); return; }
+        String top = (String) topCategoryDropdown.getSelectedItem();
+        if (top == null || top.equals("Select a category..."))
+        {
+            status("Please select a category.", Color.RED); return;
+        }
+
+        String category = (String) subCategoryDropdown.getSelectedItem();
+        if (category == null || category.equals("Select a type..."))
+        {
+            status("Please select a submission type.", Color.RED); return;
+        }
+
+        if (capturedScreenshot == null)
+        {
+            status("Please capture a screenshot first.", Color.RED); return;
+        }
 
         String gpStr = null;
         if ("Donation".equals(category))
@@ -373,8 +498,17 @@ public class TyrsGuardPanel extends PluginPanel
         if (apiUrl.isEmpty()) { status("Set Bot API URL in config.", Color.RED); return; }
 
         String rsn      = plugin.getLocalPlayerName();
-        String staffName = staffPresentCheckbox.isSelected() ? staffNameField.getText().trim() : null;
+        String staffName = staffPresentCheckbox.isVisible() && staffPresentCheckbox.isSelected()
+            ? staffNameField.getText().trim() : null;
         String details   = detailsArea.getText().trim();
+
+        // Append raid partner info to details if applicable
+        if (raidPartnerField.isVisible() && !raidPartnerField.getText().trim().isEmpty())
+        {
+            String partnerLabel = "Teaching a Raid".equals(category) ? "Taught member" : "Taught by";
+            String partnerLine  = partnerLabel + ": " + raidPartnerField.getText().trim();
+            details = details.isEmpty() ? partnerLine : details + "\n" + partnerLine;
+        }
 
         submitButton.setEnabled(false);
         status("Submitting...", Color.YELLOW);
@@ -399,12 +533,12 @@ public class TyrsGuardPanel extends PluginPanel
 
                 try (OutputStream out = conn.getOutputStream())
                 {
-                    field(out, boundary, "discordId", discordId);
-                    field(out, boundary, "rsn",       rsn != null ? rsn : "");
-                    field(out, boundary, "category",  fCat);
-                    field(out, boundary, "details",   fDets);
+                    field(out, boundary, "discordId",    discordId);
+                    field(out, boundary, "rsn",          rsn != null ? rsn : "");
+                    field(out, boundary, "category",     fCat);
+                    field(out, boundary, "details",      fDets);
                     field(out, boundary, "staffPresent", fStaff != null ? "true" : "false");
-                    if (fStaff != null) field(out, boundary, "staffName", fStaff);
+                    if (fStaff != null) field(out, boundary, "staffName",  fStaff);
                     if (fGp    != null) field(out, boundary, "donationGp", fGp);
                     ByteArrayOutputStream imgBytes = new ByteArrayOutputStream();
                     ImageIO.write(fShot, "png", imgBytes);
@@ -423,10 +557,19 @@ public class TyrsGuardPanel extends PluginPanel
                         detailsArea.setText("");
                         donationGpField.setText("");
                         staffPresentCheckbox.setSelected(false);
-                        staffNameField.setText("");
                         staffNameLabel.setVisible(false);
                         staffNameField.setVisible(false);
-                        categoryDropdown.setSelectedIndex(0);
+                        topCategoryDropdown.setSelectedIndex(0);
+                        subCategoryDropdown.removeAllItems();
+                        subCategoryDropdown.addItem("Select a type...");
+                        subCategoryLabel.setVisible(false);
+                        subCategoryDropdown.setVisible(false);
+                        staffPresentCheckbox.setVisible(false);
+                        donationLabel.setVisible(false);
+                        donationGpField.setVisible(false);
+                        raidPartnerLabel.setVisible(false);
+                        raidPartnerField.setVisible(false);
+                        raidPartnerField.setText("");
                     }
                     else { status("Failed (HTTP " + code + "). Check config.", Color.RED); }
                     submitButton.setEnabled(true);
@@ -457,7 +600,7 @@ public class TyrsGuardPanel extends PluginPanel
                 String body = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
                 if (code == 200)
                 {
-                    long pts  = jsonLong(body, "points");
+                    long pts    = jsonLong(body, "points");
                     String rank     = jsonStr(body, "rank");
                     String nextRank = jsonStr(body, "nextRank");
                     long toNext     = jsonLong(body, "pointsToNext");
