@@ -52,8 +52,6 @@ import java.util.function.Consumer;
 )
 public class TyrsGuardPlugin extends Plugin
 {
-    // ── Injected dependencies ────────────────────────────────────────────────
-
     @Inject private ClientToolbar   clientToolbar;
     @Inject private TyrsGuardConfig config;
     @Inject private Client          client;
@@ -61,12 +59,8 @@ public class TyrsGuardPlugin extends Plugin
     @Inject private ClientThread    clientThread;
     @Inject private EventBus        eventBus;
 
-    // ── UI ───────────────────────────────────────────────────────────────────
-
     private TyrsGuardPanel   panel;
     private NavigationButton navButton;
-
-    // ── WebSocket (Discord → game) ────────────────────────────────────────────
 
     private HttpClient             wsHttpClient;
     private WebSocket              webSocket;
@@ -75,20 +69,16 @@ public class TyrsGuardPlugin extends Plugin
     private final AtomicBoolean    wsConnecting   = new AtomicBoolean(false);
     private static final int       WS_RECONNECT_INTERVAL_SEC = 30;
 
-    // ── Outgoing chat queue (game → Discord) ──────────────────────────────────
-
     private ScheduledExecutorService outboundScheduler;
+    private ScheduledExecutorService pingScheduler;
+    private static final int PING_INTERVAL_SEC = 20;
     private final ConcurrentLinkedQueue<String[]> outboundQueue = new ConcurrentLinkedQueue<>();
     private static final int OUTBOUND_FLUSH_INTERVAL_SEC = 2;
 
-    // ── Discord icon shown in-game next to Discord messages ──────────────────
-
     private int discordIconSlot = -1;
 
-    // ── Dedup cache to prevent double-sends to Discord ───────────────────────
-
     private static final String DISCORD_PREFIX   = "[D] ";
-    private static final long   DEDUP_WINDOW_MS  = 10000;
+    private static final long   DEDUP_WINDOW_MS  = 3000;
     private final Map<String, Long> recentMessages = Collections.synchronizedMap(
         new LinkedHashMap<String, Long>(50, 0.75f, true)
         {
@@ -110,7 +100,7 @@ public class TyrsGuardPlugin extends Plugin
         panel = new TyrsGuardPanel(config, this);
 
         final BufferedImage icon = ImageUtil.loadImageResource(getClass(),
-    "/com/tyrsguard/icon.png");
+            "/com/tyrsguard/icon.png");
 
         navButton = NavigationButton.builder()
             .tooltip("Tyrs Guard Clan")
@@ -121,14 +111,13 @@ public class TyrsGuardPlugin extends Plugin
 
         clientToolbar.addNavigation(navButton);
 
-        // Load the Discord icon sprite so it can be shown next to incoming messages
+        // Load Discord icon sprite on client thread
         clientThread.invoke(() -> {
             if (client.getModIcons() == null) return false;
             loadDiscordIcon();
             return true;
         });
 
-        // Start the outbound flush scheduler (game → Discord)
         outboundScheduler = Executors.newSingleThreadScheduledExecutor();
         outboundScheduler.scheduleAtFixedRate(
             this::flushOutboundQueue,
@@ -137,13 +126,11 @@ public class TyrsGuardPlugin extends Plugin
             TimeUnit.SECONDS
         );
 
-        // Start WebSocket connection (Discord → game) if bridge is enabled
         if (config.chatBridgeEnabled())
         {
             startWebSocket();
         }
 
-        // Reconnect watchdog — checks every 30s and reconnects if socket dropped
         wsScheduler = Executors.newSingleThreadScheduledExecutor();
         wsScheduler.scheduleAtFixedRate(
             this::checkWebSocketHealth,
@@ -151,6 +138,15 @@ public class TyrsGuardPlugin extends Plugin
             WS_RECONNECT_INTERVAL_SEC,
             TimeUnit.SECONDS
         );
+
+        pingScheduler = Executors.newSingleThreadScheduledExecutor();
+        pingScheduler.scheduleAtFixedRate(
+            this::sendWebSocketPing,
+            PING_INTERVAL_SEC,
+            PING_INTERVAL_SEC,
+            TimeUnit.SECONDS
+        );
+
 
         eventBus.register(this);
         log.debug("Tyrs Guard Clan plugin started");
@@ -166,6 +162,7 @@ public class TyrsGuardPlugin extends Plugin
 
         if (outboundScheduler != null) { outboundScheduler.shutdownNow(); outboundScheduler = null; }
         if (wsScheduler      != null) { wsScheduler.shutdownNow();       wsScheduler       = null; }
+        if (pingScheduler    != null) { pingScheduler.shutdownNow();     pingScheduler     = null; }
 
         outboundQueue.clear();
         log.debug("Tyrs Guard Clan plugin stopped");
@@ -192,7 +189,6 @@ public class TyrsGuardPlugin extends Plugin
     public void onClanChannelChanged(ClanChannelChanged event)
     {
         if (!config.chatBridgeEnabled()) return;
-        // Reconnect when rejoining a clan channel so the socket is fresh
         stopWebSocket();
         if (event.getClanChannel() != null)
         {
@@ -207,6 +203,40 @@ public class TyrsGuardPlugin extends Plugin
 
         ChatMessageType type = event.getType();
 
+        // Capture GAMEMESSAGE and SPAM — drops, level ups, quests, pets, PBs, collection log etc.
+        // Read-only listener. No game interaction. Fully TOS compliant.
+        if (type == ChatMessageType.GAMEMESSAGE || type == ChatMessageType.SPAM)
+        {
+            String notifMsg = stripTags(event.getMessage());
+            if (!notifMsg.isEmpty())
+            {
+                String lower = notifMsg.toLowerCase();
+                boolean isNotable =
+                    lower.contains("received a drop") ||
+                    lower.contains("received special loot") ||
+                    lower.contains("you have a funny feeling") ||
+                    lower.contains("you feel something weird") ||
+                    lower.contains("you have completed") ||
+                    lower.contains("congratulations") ||
+                    lower.contains("quest complete") ||
+                    lower.contains("diary complete") ||
+                    lower.contains("level up") ||
+                    lower.contains("you've reached") ||
+                    lower.contains("personal best") ||
+                    lower.contains("new personal best") ||
+                    lower.contains("collection log") ||
+                    lower.contains("combat achievement") ||
+                    lower.contains("has joined the clan") ||
+                    lower.contains("has left the clan");
+                if (isNotable)
+                {
+                    String playerName = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : "";
+                    outboundQueue.add(new String[]{ "notification", playerName != null ? playerName : "", notifMsg, "Member" });
+                }
+            }
+            return;
+        }
+
         if (type != ChatMessageType.CLAN_CHAT
             && type != ChatMessageType.CLAN_GUEST_CHAT
             && type != ChatMessageType.CLAN_MESSAGE
@@ -220,26 +250,23 @@ public class TyrsGuardPlugin extends Plugin
         String message = stripTags(event.getMessage());
 
         if (message.isEmpty()) return;
+        // Allow empty sender for system notifications (level ups, quest completions, etc.)
+        // Only block if it's NOT a notification type AND sender is empty
+        if (event.getName().isEmpty() && event.getSender().isEmpty()
+            && type != ChatMessageType.CLAN_MESSAGE
+            && type != ChatMessageType.CLAN_GIM_MESSAGE) return;
 
-        // Filter local echo — when the local player sends a message, OSRS fires the event
-        // with empty name and sender before the server echoes it back. Skip the local copy.
-        if (event.getName().isEmpty() && event.getSender().isEmpty()) return;
-
-        // Filter system hint messages
         if (message.contains("To talk in your clan") || message.contains("start each line of chat with"))
             return;
 
-        // Don't echo messages that originated from Discord back to Discord
         if (sender.startsWith(DISCORD_PREFIX) || message.startsWith(DISCORD_PREFIX)) return;
 
-        // Dedup: drop if we saw this exact pair within the window
         String dedupKey = sender.toLowerCase() + "|" + message;
         long   now      = System.currentTimeMillis();
         Long   lastSeen = recentMessages.get(dedupKey);
         if (lastSeen != null && (now - lastSeen) < DEDUP_WINDOW_MS) return;
         recentMessages.put(dedupKey, now);
 
-        // Resolve clan rank title for this sender
         String rank = resolveClanRank(sender);
 
         String chatType;
@@ -250,7 +277,6 @@ public class TyrsGuardPlugin extends Plugin
         else
             chatType = "notification";
 
-        // Queue for outbound flush rather than firing a thread per message
         outboundQueue.add(new String[]{ chatType, sender, message, rank });
     }
 
@@ -264,7 +290,6 @@ public class TyrsGuardPlugin extends Plugin
         if (apiUrl.isEmpty() || config.pluginApiSecret().isEmpty()) return;
         if (wsConnected.get() || wsConnecting.get()) return;
 
-        // Convert http(s):// → ws(s)://
         String wsUrl = apiUrl
             .replaceFirst("^https://", "wss://")
             .replaceFirst("^http://",  "ws://")
@@ -326,6 +351,20 @@ public class TyrsGuardPlugin extends Plugin
         }
     }
 
+
+    private void sendWebSocketPing()
+    {
+        if (!wsConnected.get() || webSocket == null) return;
+        try
+        {
+            webSocket.sendText("{\"type\":\"ping\"}", true);
+        }
+        catch (Exception e)
+        {
+            log.warn("Tyrs Guard Clan: WebSocket ping failed: {}", e.getMessage());
+        }
+    }
+
     private void stopWebSocket()
     {
         if (webSocket != null)
@@ -350,6 +389,9 @@ public class TyrsGuardPlugin extends Plugin
     /**
      * Handles a JSON message pushed from the bot over the WebSocket.
      * Expected format: {"sender":"Name","message":"Hello"}
+     *
+     * FIX: clan channel name must be fetched on the client thread.
+     * FIX: discord icon path corrected to /com/tyrsguard/discord_icon.png
      */
     private void handleIncomingMessage(String json)
     {
@@ -359,21 +401,28 @@ public class TyrsGuardPlugin extends Plugin
             String message = extractJsonStr(json, "message");
             if (sender == null || message == null || message.isEmpty()) return;
 
-            // Normalize fancy Unicode usernames (Discord users with stylised names)
             String cleanSender = normalizeToAscii(sender).trim();
             if (cleanSender.isEmpty()) cleanSender = "Discord";
 
-            // Prefix with Discord icon if we loaded one, otherwise use text prefix
             final String displayName = discordIconSlot >= 0
                 ? String.format("<img=%d>%s", discordIconSlot, cleanSender)
                 : DISCORD_PREFIX + cleanSender;
 
             final String finalMessage = message;
 
+            // IMPORTANT: must run on client thread; clan channel name must be
+            // retrieved inside invokeLater to avoid thread-safety issues
             clientThread.invokeLater(() ->
             {
+                if (client.getGameState() != GameState.LOGGED_IN) return;
+
                 ClanChannel clan = client.getClanChannel();
-                String clanName  = clan != null ? clan.getName() : "";
+                // Use the actual clan name if available, empty string otherwise
+                // Empty string is safe — OSRS will still show the message in clan chat
+                String clanName = (clan != null && clan.getName() != null)
+                    ? clan.getName()
+                    : "";
+
                 client.addChatMessage(
                     ChatMessageType.CLAN_CHAT,
                     displayName,
@@ -400,7 +449,6 @@ public class TyrsGuardPlugin extends Plugin
         String apiUrl = config.botApiUrl().trim();
         if (apiUrl.isEmpty()) return;
 
-        // Drain up to 30 messages per flush
         StringBuilder jsonArray = new StringBuilder("[");
         int count = 0;
         String[] entry;
@@ -448,6 +496,7 @@ public class TyrsGuardPlugin extends Plugin
 
     // ─────────────────────────────────────────────────────────────────────────
     // Discord icon sprite
+    // FIX: path changed from /net/runelite/... to /com/tyrsguard/discord_icon.png
     // ─────────────────────────────────────────────────────────────────────────
 
     private void loadDiscordIcon()
@@ -457,9 +506,14 @@ public class TyrsGuardPlugin extends Plugin
 
         try
         {
+            // Corrected path — file must live at src/main/resources/com/tyrsguard/discord_icon.png
             BufferedImage image = ImageUtil.loadImageResource(getClass(),
-                "/net/runelite/client/plugins/tyrsguard/discord_icon.png");
-            if (image == null) return;
+                "/com/tyrsguard/discord_icon.png");
+            if (image == null)
+            {
+                log.warn("Tyrs Guard Clan: discord_icon.png not found at /com/tyrsguard/discord_icon.png");
+                return;
+            }
 
             IndexedSprite sprite = ImageUtil.getImageIndexedSprite(image, client);
             discordIconSlot = modIcons.length;
@@ -471,7 +525,7 @@ public class TyrsGuardPlugin extends Plugin
         }
         catch (Exception e)
         {
-            log.warn("Tyrs Guard Clan: Could not load Discord icon, using text prefix instead");
+            log.warn("Tyrs Guard Clan: Could not load Discord icon, using text prefix instead: {}", e.getMessage());
             discordIconSlot = -1;
         }
     }
@@ -480,10 +534,6 @@ public class TyrsGuardPlugin extends Plugin
     // Clan rank resolution
     // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Looks up the sender's in-game clan rank title (e.g. "Dragon", "Sapphire").
-     * Returns "Guest" if they can't be found in the clan channel.
-     */
     private String resolveClanRank(String senderName)
     {
         ClanChannel clan = client.getClanChannel();
@@ -554,27 +604,18 @@ public class TyrsGuardPlugin extends Plugin
                     image.getWidth(null), image.getHeight(null), BufferedImage.TYPE_INT_ARGB);
                 copy.getGraphics().drawImage(image, 0, 0, null);
                 copy.getGraphics().dispose();
-
-                // Draw timestamp overlay centered near the top of the screenshot
                 drawTimestamp(copy);
-
                 SwingUtilities.invokeLater(() -> callback.accept(copy));
             }
             else { SwingUtilities.invokeLater(() -> callback.accept(null)); }
         });
     }
 
-    /**
-     * Draws the current local date/time centered near the top of the image.
-     * Uses the system's default timezone, with common US/Canada zone abbreviations
-     * where applicable (e.g. EST, CST, MST, PST, AKST, HST).
-     */
     private void drawTimestamp(BufferedImage image)
     {
         ZoneId localZone = ZoneId.systemDefault();
         ZonedDateTime now = ZonedDateTime.now(localZone);
 
-        // Map Java timezone IDs to friendly abbreviations for US/Canada zones
         String zoneId = localZone.getId();
         String zoneLabel;
         if (zoneId.equals("America/New_York")       || zoneId.equals("America/Detroit")
@@ -597,18 +638,15 @@ public class TyrsGuardPlugin extends Plugin
         else if (zoneId.equals("America/St_Johns"))
             zoneLabel = now.getOffset().getTotalSeconds() == -12600 ? "NST" : "NDT";
         else
-            // Non-US/Canada: use standard offset abbreviation (e.g. GMT, GMT+1, etc.)
             zoneLabel = now.format(DateTimeFormatter.ofPattern("zzz"));
 
         String timestamp = now.format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy  h:mm:ss a"))
             + "  " + zoneLabel;
 
-        // CST/CDT conversion
         ZonedDateTime cstTime = now.withZoneSameInstant(ZoneId.of("America/Chicago"));
         String cstLabel = cstTime.getOffset().getTotalSeconds() == -21600 ? "CST" : "CDT";
         String cstString = cstTime.format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy  h:mm:ss a")) + "  " + cstLabel;
 
-        // UK/GMT conversion
         ZonedDateTime ukTime = now.withZoneSameInstant(ZoneId.of("Europe/London"));
         String ukLabel = ukTime.getOffset().getTotalSeconds() == 0 ? "GMT" : "BST";
         String ukString = "(" + ukTime.format(DateTimeFormatter.ofPattern("EEEE, MMMM d, yyyy  h:mm:ss a")) + "  " + ukLabel + ")";
@@ -619,7 +657,6 @@ public class TyrsGuardPlugin extends Plugin
         Graphics2D g = image.createGraphics();
         g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-        // Size font relative to image width
         int fontSize = Math.max(16, image.getWidth() / 55);
         Font font = new Font("SansSerif", Font.BOLD, fontSize);
         g.setFont(font);
@@ -629,7 +666,6 @@ public class TyrsGuardPlugin extends Plugin
         String[] lines = { line1, line2 };
         int yOffset = Math.max(60, image.getHeight() / 11);
 
-        // line1: centered
         int line1Width = fm.stringWidth(line1);
         int line1x = (image.getWidth() - line1Width) / 2;
         int line1RightEdge = line1x + line1Width;
@@ -638,17 +674,14 @@ public class TyrsGuardPlugin extends Plugin
         {
             String line = lines[i];
             int textWidth = fm.stringWidth(line);
-            // line1 centered, line2 right-aligned to the right edge of line1
             int x = (i == 0) ? line1x : (line1RightEdge - textWidth);
             int y = yOffset + (i * lineHeight);
 
-            // Dark shadow for readability
             g.setColor(new Color(0, 0, 0, 180));
             for (int dx = -2; dx <= 2; dx++)
                 for (int dy = -2; dy <= 2; dy++)
                     g.drawString(line, x + dx, y + dy);
 
-            // White text on top
             g.setColor(Color.WHITE);
             g.drawString(line, x, y);
         }
@@ -660,10 +693,6 @@ public class TyrsGuardPlugin extends Plugin
     {
         return configManager.getConfig(TyrsGuardConfig.class);
     }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // Unicode normalizer (fancy Discord usernames → plain ASCII)
-    // ─────────────────────────────────────────────────────────────────────────
 
     private String normalizeToAscii(String input)
     {
