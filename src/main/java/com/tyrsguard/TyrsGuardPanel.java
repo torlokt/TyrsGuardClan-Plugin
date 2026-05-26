@@ -4,6 +4,8 @@ import net.runelite.client.ui.PluginPanel;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.*;
@@ -11,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import javax.imageio.ImageIO;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.client.util.ImageUtil;
 
 @Slf4j
 public class TyrsGuardPanel extends PluginPanel
@@ -18,8 +21,11 @@ public class TyrsGuardPanel extends PluginPanel
     private final TyrsGuardConfig config;
     private final TyrsGuardPlugin plugin;
 
+    private JLabel rankIconLabel;
     private JLabel xpLabel;
     private JLabel rankLabel;
+    private JLabel prestigeLabel;
+    private JLabel multiplierLabel;
     private JProgressBar rankProgressBar;
     private JLabel progressLabel;
     private JButton refreshXpButton;
@@ -42,6 +48,7 @@ public class TyrsGuardPanel extends PluginPanel
     private JButton submitButton;
     private JLabel statusLabel;
 
+
     private static final int PAD = 8;
     private static final Color BG_DARK  = new Color(30, 30, 30);
     private static final Color BG_PANEL = new Color(42, 42, 42);
@@ -49,6 +56,12 @@ public class TyrsGuardPanel extends PluginPanel
     private static final Color COL_GOLD = new Color(200, 160, 80);
     private static final Color COL_TEXT = new Color(220, 220, 220);
     private static final Color COL_DIM  = new Color(140, 140, 140);
+    private static final Color COL_LINK = new Color(100, 160, 255);
+
+    // Font sizes — bumped up from original
+    private static final float FONT_HEADER = 16f;
+    private static final float FONT_BODY   = 15f;
+    private static final float FONT_SMALL  = 14f;
 
     private static final String[] TOP_CATEGORIES = {
         "Select a category...",
@@ -61,6 +74,7 @@ public class TyrsGuardPanel extends PluginPanel
         "Events Participation",
         "Events Win",
         "Recruiting",
+        "New Recruit Joined Discord",
         "Donation",
         "Hosting a Mass",
         "Hosting an Event",
@@ -73,12 +87,9 @@ public class TyrsGuardPanel extends PluginPanel
         "Deadman Participation"
     };
 
+    // Auto-award categories removed (bot handles these automatically)
     private static final String[] PERSONAL_PROGRESSION = {
         "Select a type...",
-        "Unique Item Drop",
-        "Pet Drop",
-        "Quest/Diary Completion",
-        "Achieved Level 99",
         "Fire Cape",
         "Infernal Cape",
         "Quest Cape",
@@ -94,7 +105,6 @@ public class TyrsGuardPanel extends PluginPanel
         setLayout(new BorderLayout());
         setBackground(BG_DARK);
 
-        // Wrapper that forces full viewport width
         JPanel wrapper = new JPanel(new GridBagLayout())
         {
             @Override public Dimension getPreferredSize()
@@ -117,7 +127,6 @@ public class TyrsGuardPanel extends PluginPanel
         wrapper.add(section("Screenshot",          shotPanel()),   gbc);
         wrapper.add(submitPanel(),                                  gbc);
 
-        // filler
         gbc.weighty = 1.0; gbc.fill = GridBagConstraints.BOTH;
         wrapper.add(Box.createVerticalGlue(), gbc);
 
@@ -141,7 +150,7 @@ public class TyrsGuardPanel extends PluginPanel
 
         JLabel hdr = new JLabel(title);
         hdr.setForeground(COL_GOLD);
-        hdr.setFont(hdr.getFont().deriveFont(Font.BOLD, 12f));
+        hdr.setFont(hdr.getFont().deriveFont(Font.BOLD, FONT_HEADER));
         hdr.setBorder(new EmptyBorder(0, 0, 6, 0));
         card.add(hdr, BorderLayout.NORTH);
         card.add(inner, BorderLayout.CENTER);
@@ -154,8 +163,24 @@ public class TyrsGuardPanel extends PluginPanel
     {
         JPanel p = inner();
         GridBagConstraints g = fillGbc();
-        JLabel sub = lbl("Submit proof & earn clan XP", COL_DIM, 11f);
+
+        JLabel sub = lbl("Submit proof & earn clan XP", COL_TEXT, FONT_BODY);
         p.add(sub, g);
+
+        // ── Discord and Website buttons ──
+        g.insets = new Insets(8, 0, 0, 0);
+        JPanel buttonRow = new JPanel(new GridLayout(1, 2, 6, 0));
+        buttonRow.setBackground(BG_PANEL);
+
+        JButton discordBtn = linkBtn("Discord", new Color(88, 101, 242));
+        discordBtn.addActionListener(e -> openUrl("https://discord.gg/tyrsguard"));
+
+        JButton websiteBtn = linkBtn("Website", new Color(180, 80, 0));
+        websiteBtn.addActionListener(e -> openUrl("https://tyrsguard.com"));
+
+        buttonRow.add(discordBtn);
+        buttonRow.add(websiteBtn);
+        p.add(buttonRow, g);
         return p;
     }
 
@@ -164,29 +189,43 @@ public class TyrsGuardPanel extends PluginPanel
         JPanel p = inner();
         GridBagConstraints g = fillGbc();
 
-        rankLabel = lbl("Rank: —", COL_TEXT, Font.BOLD, 12f);
-        xpLabel   = lbl("XP: —",   COL_DIM,  11f);
+        // ── Rank icon ──
+        rankIconLabel = new JLabel();
+        rankIconLabel.setHorizontalAlignment(SwingConstants.CENTER);
+
+        // ── Rank + XP labels ──
+        rankLabel       = lbl("Rank: —",        COL_TEXT, Font.BOLD, FONT_HEADER);
+        xpLabel         = lbl("XP: —",          COL_DIM,  FONT_BODY);
+        multiplierLabel = lbl("Multiplier: —",  COL_TEXT, FONT_SMALL);
+        prestigeLabel   = lbl("",               new Color(255, 215, 0), Font.BOLD, FONT_SMALL);
+        prestigeLabel.setVisible(false);
 
         rankProgressBar = new JProgressBar(0, 100);
         rankProgressBar.setValue(0);
         rankProgressBar.setForeground(new Color(180, 0, 0));
         rankProgressBar.setBackground(new Color(55, 55, 55));
-        rankProgressBar.setPreferredSize(new Dimension(0, 6));
+        rankProgressBar.setPreferredSize(new Dimension(0, 8));
 
-        progressLabel = lbl("Set Discord ID in config", COL_DIM, 10f);
+        progressLabel = lbl("Set Discord ID in config", COL_TEXT, FONT_SMALL);
 
         refreshXpButton = btn("Refresh XP", new Color(60, 60, 60));
         refreshXpButton.addActionListener(e -> refreshXp());
 
-        p.add(rankLabel,        g);
+        p.add(rankIconLabel,     g);
+        g.insets = new Insets(4, 0, 0, 0);
+        p.add(rankLabel,         g);
         g.insets = new Insets(2, 0, 0, 0);
-        p.add(xpLabel,          g);
+        p.add(xpLabel,           g);
+        p.add(multiplierLabel,   g);
+        p.add(prestigeLabel,     g);
         g.insets = new Insets(6, 0, 0, 0);
-        p.add(rankProgressBar,  g);
+        p.add(rankProgressBar,   g);
         g.insets = new Insets(2, 0, 0, 0);
-        p.add(progressLabel,    g);
+        p.add(progressLabel,     g);
         g.insets = new Insets(8, 0, 0, 0);
-        p.add(refreshXpButton,  g);
+        p.add(refreshXpButton,   g);
+
+
         return p;
     }
 
@@ -195,79 +234,76 @@ public class TyrsGuardPanel extends PluginPanel
         JPanel p = inner();
         GridBagConstraints g = fillGbc();
 
-        // ── Top-level category dropdown ──
         topCategoryDropdown = new JComboBox<>(TOP_CATEGORIES);
         styleCombo(topCategoryDropdown);
         topCategoryDropdown.addActionListener(e -> onTopCategoryChanged());
 
-        // ── Sub-category dropdown (hidden until top is chosen) ──
-        subCategoryLabel = lbl("Submission Type:", COL_TEXT, 11f);
+        subCategoryLabel = lbl("Submission Type:", COL_TEXT, FONT_BODY);
         subCategoryDropdown = new JComboBox<>(new String[]{ "Select a type..." });
         styleCombo(subCategoryDropdown);
         subCategoryDropdown.addActionListener(e -> onSubCategoryChanged());
         subCategoryLabel.setVisible(false);
         subCategoryDropdown.setVisible(false);
 
-        // ── Donation field ──
-        donationLabel  = lbl("Donation Amount (GP):", COL_TEXT, 11f);
+        donationLabel   = lbl("Donation Amount (GP):", COL_TEXT, FONT_BODY);
         donationGpField = input("e.g. 5000000");
         donationLabel.setVisible(false);
         donationGpField.setVisible(false);
 
-        // ── Raid partner field (Teaching a Raid / Learner Raid Participation) ──
-        raidPartnerLabel = lbl("Username of member you taught/who taught you:", COL_TEXT, 11f);
+        raidPartnerLabel = lbl("Username of member you taught/who taught you:", COL_TEXT, FONT_BODY);
         raidPartnerField = input("Enter their in-game / Discord username");
         raidPartnerLabel.setVisible(false);
         raidPartnerField.setVisible(false);
 
-        // ── Staff presence (Clan Contributions only) ──
         staffPresentCheckbox = new JCheckBox("Staff was present");
         staffPresentCheckbox.setBackground(BG_PANEL);
         staffPresentCheckbox.setForeground(COL_TEXT);
+        staffPresentCheckbox.setFont(staffPresentCheckbox.getFont().deriveFont(FONT_BODY));
         staffPresentCheckbox.setFocusPainted(false);
         staffPresentCheckbox.addActionListener(e -> onStaffChanged());
         staffPresentCheckbox.setVisible(false);
 
-        staffNameLabel = lbl("Staff Member Name:", COL_TEXT, 11f);
+        staffNameLabel = lbl("Staff Member Name:", COL_TEXT, FONT_BODY);
         staffNameField = input("Enter staff name");
         staffNameLabel.setVisible(false);
         staffNameField.setVisible(false);
 
-        detailsArea = new JTextArea(3, 0);
+        detailsArea = new JTextArea(4, 0);
         detailsArea.setBackground(BG_INPUT);
         detailsArea.setForeground(COL_TEXT);
         detailsArea.setCaretColor(COL_TEXT);
+        detailsArea.setFont(detailsArea.getFont().deriveFont(FONT_BODY));
         detailsArea.setLineWrap(true);
         detailsArea.setWrapStyleWord(true);
         detailsArea.setBorder(new EmptyBorder(4, 4, 4, 4));
         JScrollPane ds = new JScrollPane(detailsArea);
         ds.setBorder(BorderFactory.createLineBorder(new Color(70, 70, 70)));
 
-        p.add(lbl("Category:", COL_TEXT, 11f),  g);
+        p.add(lbl("Category:", COL_TEXT, FONT_BODY), g);
         g.insets = new Insets(3, 0, 0, 0);
-        p.add(topCategoryDropdown,               g);
+        p.add(topCategoryDropdown,   g);
         g.insets = new Insets(6, 0, 0, 0);
-        p.add(subCategoryLabel,                  g);
+        p.add(subCategoryLabel,      g);
         g.insets = new Insets(3, 0, 0, 0);
-        p.add(subCategoryDropdown,               g);
+        p.add(subCategoryDropdown,   g);
         g.insets = new Insets(6, 0, 0, 0);
-        p.add(donationLabel,                     g);
+        p.add(donationLabel,         g);
         g.insets = new Insets(3, 0, 0, 0);
-        p.add(donationGpField,                   g);
+        p.add(donationGpField,       g);
         g.insets = new Insets(6, 0, 0, 0);
-        p.add(raidPartnerLabel,                  g);
+        p.add(raidPartnerLabel,      g);
         g.insets = new Insets(3, 0, 0, 0);
-        p.add(raidPartnerField,                  g);
+        p.add(raidPartnerField,      g);
         g.insets = new Insets(6, 0, 0, 0);
-        p.add(staffPresentCheckbox,              g);
+        p.add(staffPresentCheckbox,  g);
         g.insets = new Insets(4, 0, 0, 0);
-        p.add(staffNameLabel,                    g);
+        p.add(staffNameLabel,        g);
         g.insets = new Insets(3, 0, 0, 0);
-        p.add(staffNameField,                    g);
+        p.add(staffNameField,        g);
         g.insets = new Insets(6, 0, 0, 0);
-        p.add(lbl("Additional Details (optional):", COL_TEXT, 11f), g);
+        p.add(lbl("Additional Details (optional):", COL_TEXT, FONT_BODY), g);
         g.insets = new Insets(3, 0, 0, 0);
-        p.add(ds,                                g);
+        p.add(ds, g);
         return p;
     }
 
@@ -276,7 +312,13 @@ public class TyrsGuardPanel extends PluginPanel
         JPanel p = inner();
         GridBagConstraints g = fillGbc();
 
-        screenshotPreviewLabel = lbl("No screenshot captured", COL_DIM, 11f);
+        screenshotPreviewLabel = new JLabel("No screenshot captured");
+        screenshotPreviewLabel.setForeground(COL_DIM);
+        screenshotPreviewLabel.setFont(screenshotPreviewLabel.getFont().deriveFont(FONT_SMALL));
+        screenshotPreviewLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        // Fixed height so screenshot preview never pushes submit button off screen
+        screenshotPreviewLabel.setPreferredSize(new Dimension(PluginPanel.PANEL_WIDTH - PAD * 4, 80));
+
         screenshotButton = btn("Capture Game Window", new Color(0, 110, 0));
         screenshotButton.addActionListener(e -> captureScreenshot());
 
@@ -292,9 +334,9 @@ public class TyrsGuardPanel extends PluginPanel
         p.setBackground(BG_DARK);
         GridBagConstraints g = fillGbc();
 
-        statusLabel = lbl(" ", COL_DIM, 11f);
+        statusLabel  = lbl(" ", COL_DIM, FONT_SMALL);
         submitButton = btn("Submit to Tyrs Guard Clan", new Color(160, 0, 0));
-        submitButton.setFont(submitButton.getFont().deriveFont(Font.BOLD, 13f));
+        submitButton.setFont(submitButton.getFont().deriveFont(Font.BOLD, FONT_HEADER));
         submitButton.addActionListener(e -> submit());
 
         p.add(statusLabel,  g);
@@ -302,6 +344,7 @@ public class TyrsGuardPanel extends PluginPanel
         p.add(submitButton, g);
         return p;
     }
+
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -344,9 +387,10 @@ public class TyrsGuardPanel extends PluginPanel
         f.setBackground(BG_INPUT);
         f.setForeground(COL_TEXT);
         f.setCaretColor(COL_TEXT);
+        f.setFont(f.getFont().deriveFont(FONT_BODY));
         f.setBorder(BorderFactory.createCompoundBorder(
             BorderFactory.createLineBorder(new Color(70, 70, 70)),
-            new EmptyBorder(3, 5, 3, 5)));
+            new EmptyBorder(4, 6, 4, 6)));
         f.setToolTipText(tooltip);
         return f;
     }
@@ -355,7 +399,7 @@ public class TyrsGuardPanel extends PluginPanel
     {
         c.setBackground(BG_INPUT);
         c.setForeground(COL_TEXT);
-        c.setFont(c.getFont().deriveFont(11f));
+        c.setFont(c.getFont().deriveFont(FONT_BODY));
     }
 
     private JButton btn(String text, Color bg)
@@ -366,74 +410,67 @@ public class TyrsGuardPanel extends PluginPanel
         b.setBorderPainted(false);
         b.setFocusPainted(false);
         b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        b.setFont(b.getFont().deriveFont(12f));
+        b.setFont(b.getFont().deriveFont(FONT_BODY));
         return b;
+    }
+
+    private JButton linkBtn(String text, Color bg)
+    {
+        JButton b = new JButton(text);
+        b.setBackground(bg);
+        b.setForeground(Color.WHITE);
+        b.setBorderPainted(false);
+        b.setFocusPainted(false);
+        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        b.setFont(b.getFont().deriveFont(Font.BOLD, FONT_BODY));
+        return b;
+    }
+
+    private void openUrl(String url)
+    {
+        try { Desktop.getDesktop().browse(new URI(url)); }
+        catch (Exception e) { log.warn("Could not open URL: {}", url); }
     }
 
     // ── Events ────────────────────────────────────────────────────────────────
 
     private void onTopCategoryChanged()
     {
-        String top = (String) topCategoryDropdown.getSelectedItem();
+        String top     = (String) topCategoryDropdown.getSelectedItem();
         boolean isClan     = "Clan Contributions".equals(top);
         boolean isPersonal = "Personal Progression".equals(top);
         boolean hasTop     = isClan || isPersonal;
 
-        // Populate sub-category dropdown based on top selection
         subCategoryDropdown.removeAllItems();
-        if (isClan)
-        {
-            for (String s : CLAN_CONTRIBUTIONS) subCategoryDropdown.addItem(s);
-        }
-        else if (isPersonal)
-        {
-            for (String s : PERSONAL_PROGRESSION) subCategoryDropdown.addItem(s);
-        }
+        if (isClan)     for (String s : CLAN_CONTRIBUTIONS)   subCategoryDropdown.addItem(s);
+        else if (isPersonal) for (String s : PERSONAL_PROGRESSION) subCategoryDropdown.addItem(s);
 
         subCategoryLabel.setVisible(hasTop);
         subCategoryDropdown.setVisible(hasTop);
 
-        // Staff presence only applies to Clan Contributions
         staffPresentCheckbox.setVisible(isClan);
-        if (!isClan)
-        {
-            staffPresentCheckbox.setSelected(false);
-            staffNameLabel.setVisible(false);
-            staffNameField.setVisible(false);
-        }
+        if (!isClan) { staffPresentCheckbox.setSelected(false); staffNameLabel.setVisible(false); staffNameField.setVisible(false); }
 
-        // Reset donation fields when switching top category
-        donationLabel.setVisible(false);
-        donationGpField.setVisible(false);
-        donationGpField.setText("");
-
-        // Reset raid partner field when switching top category
-        raidPartnerLabel.setVisible(false);
-        raidPartnerField.setVisible(false);
-        raidPartnerField.setText("");
+        donationLabel.setVisible(false); donationGpField.setVisible(false); donationGpField.setText("");
+        raidPartnerLabel.setVisible(false); raidPartnerField.setVisible(false); raidPartnerField.setText("");
 
         revalidate(); repaint();
     }
 
     private void onSubCategoryChanged()
     {
-        String sub = (String) subCategoryDropdown.getSelectedItem();
-        boolean isDonation = "Donation".equals(sub);
-        boolean isTeaching = "Teaching a Raid".equals(sub);
-        boolean isLearner  = "Learner Raid Participation".equals(sub);
+        String sub        = (String) subCategoryDropdown.getSelectedItem();
+        boolean isDonation   = "Donation".equals(sub);
+        boolean isTeaching   = "Teaching a Raid".equals(sub);
+        boolean isLearner    = "Learner Raid Participation".equals(sub);
         boolean needsPartner = isTeaching || isLearner;
 
         donationLabel.setVisible(isDonation);
         donationGpField.setVisible(isDonation);
-
         raidPartnerLabel.setVisible(needsPartner);
         raidPartnerField.setVisible(needsPartner);
         if (needsPartner)
-        {
-            raidPartnerLabel.setText(isTeaching
-                ? "Username of member you taught:"
-                : "Username of member who taught you:");
-        }
+            raidPartnerLabel.setText(isTeaching ? "Username of member you taught:" : "Username of member who taught you:");
 
         revalidate(); repaint();
     }
@@ -454,7 +491,10 @@ public class TyrsGuardPanel extends PluginPanel
             capturedScreenshot = img;
             if (img != null)
             {
-                Image thumb = img.getScaledInstance(PluginPanel.PANEL_WIDTH - PAD * 4, -1, Image.SCALE_SMOOTH);
+                // Scale to fixed 80px height to avoid pushing submit button off screen
+                int previewWidth  = PluginPanel.PANEL_WIDTH - PAD * 4;
+                int previewHeight = 80;
+                Image thumb = img.getScaledInstance(previewWidth, previewHeight, Image.SCALE_SMOOTH);
                 screenshotPreviewLabel.setIcon(new ImageIcon(thumb));
                 screenshotPreviewLabel.setText(null);
                 status("Screenshot captured!", new Color(0, 200, 0));
@@ -467,21 +507,12 @@ public class TyrsGuardPanel extends PluginPanel
     private void submit()
     {
         String top = (String) topCategoryDropdown.getSelectedItem();
-        if (top == null || top.equals("Select a category..."))
-        {
-            status("Please select a category.", Color.RED); return;
-        }
+        if (top == null || top.equals("Select a category...")) { status("Please select a category.", Color.RED); return; }
 
         String category = (String) subCategoryDropdown.getSelectedItem();
-        if (category == null || category.equals("Select a type..."))
-        {
-            status("Please select a submission type.", Color.RED); return;
-        }
+        if (category == null || category.equals("Select a type...")) { status("Please select a submission type.", Color.RED); return; }
 
-        if (capturedScreenshot == null)
-        {
-            status("Please capture a screenshot first.", Color.RED); return;
-        }
+        if (capturedScreenshot == null) { status("Please capture a screenshot first.", Color.RED); return; }
 
         String gpStr = null;
         if ("Donation".equals(category))
@@ -497,12 +528,11 @@ public class TyrsGuardPanel extends PluginPanel
         String apiUrl = config.botApiUrl().trim();
         if (apiUrl.isEmpty()) { status("Set Bot API URL in config.", Color.RED); return; }
 
-        String rsn      = plugin.getLocalPlayerName();
+        String rsn       = plugin.getLocalPlayerName();
         String staffName = staffPresentCheckbox.isVisible() && staffPresentCheckbox.isSelected()
             ? staffNameField.getText().trim() : null;
         String details   = detailsArea.getText().trim();
 
-        // Append raid partner info to details if applicable
         if (raidPartnerField.isVisible() && !raidPartnerField.getText().trim().isEmpty())
         {
             String partnerLabel = "Teaching a Raid".equals(category) ? "Taught member" : "Taught by";
@@ -600,15 +630,50 @@ public class TyrsGuardPanel extends PluginPanel
                 String body = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
                 if (code == 200)
                 {
-                    long pts    = jsonLong(body, "points");
-                    String rank     = jsonStr(body, "rank");
-                    String nextRank = jsonStr(body, "nextRank");
-                    long toNext     = jsonLong(body, "pointsToNext");
-                    long nextReq    = jsonLong(body, "nextPointsReq");
-                    long curReq     = jsonLong(body, "currentPointsReq");
+                    long   pts      = jsonLong(body, "points");
+                    String rank     = jsonStr(body,  "rank");
+                    String nextRank = jsonStr(body,  "nextRank");
+                    long   toNext   = jsonLong(body, "pointsToNext");
+                    long   nextReq  = jsonLong(body, "nextPointsReq");
+                    long   curReq   = jsonLong(body, "currentPointsReq");
+                    long   prestige = jsonLong(body, "prestigePoints");
+                    String mult     = jsonStr(body,  "multiplier");
+
+                    // Load rank icon
+                    ImageIcon rankIcon = loadRankIcon(rank);
+
                     SwingUtilities.invokeLater(() -> {
-                        rankLabel.setText("Rank: " + rank);
+                        // Update icon
+                        if (rankIcon != null)
+                        {
+                            rankIconLabel.setIcon(rankIcon);
+                            rankIconLabel.setText(null);
+                        }
+                        else
+                        {
+                            rankIconLabel.setIcon(null);
+                            rankIconLabel.setText("[ " + (rank != null ? rank : "—") + " ]");
+                            rankIconLabel.setForeground(COL_GOLD);
+                        }
+
+                        rankLabel.setText("Rank: " + (rank != null ? rank : "—"));
                         xpLabel.setText("XP: " + String.format("%,d", pts));
+
+                        // Multiplier
+                        multiplierLabel.setText("Multiplier: " + (mult != null && !mult.equals("null") ? mult + "x" : "1x"));
+                        multiplierLabel.setVisible(true);
+
+                        // Prestige
+                        if (prestige > 0)
+                        {
+                            prestigeLabel.setText("⭐ Prestige Points: " + prestige);
+                            prestigeLabel.setVisible(true);
+                        }
+                        else
+                        {
+                            prestigeLabel.setVisible(false);
+                        }
+
                         if (nextRank != null && !nextRank.equals("null") && nextReq > 0)
                         {
                             long range = nextReq - curReq;
@@ -617,6 +682,7 @@ public class TyrsGuardPanel extends PluginPanel
                             progressLabel.setText(String.format("%,d XP to %s", toNext, nextRank));
                         }
                         else { rankProgressBar.setValue(100); progressLabel.setText("Maximum rank reached!"); }
+
                         refreshXpButton.setEnabled(true);
                     });
                 }
@@ -628,6 +694,64 @@ public class TyrsGuardPanel extends PluginPanel
                 SwingUtilities.invokeLater(() -> { progressLabel.setText("Bot not reachable"); refreshXpButton.setEnabled(true); });
             }
         }, "TyrsGuardClan-XP").start();
+    }
+
+    /**
+     * Maps the bot's rank name to the correct PNG filename in /com/tyrsguard/ranks/
+     * Rank names come from the bot's /xp/ endpoint "rank" field.
+     */
+    private String rankToFilename(String rank)
+    {
+        if (rank == null) return null;
+        switch (rank)
+        {
+            // Member ranks
+            case "Bronze":      return "bronze";
+            case "Iron":        return "iron";
+            case "Steel":       return "steel";
+            case "Mithril":     return "mithril";
+            case "Adamant":     return "adamant";
+            case "Rune":        return "rune";
+            case "Dragon":      return "dragon";
+            case "Sapphire":    return "sapphire";
+            case "Emerald":     return "emerald";
+            case "Ruby":        return "ruby";
+            case "Diamond":     return "diamond";
+            case "Dragonstone": return "dragonstone";
+            case "Onyx":        return "onyx";
+            case "Legacy":      return "legacy";
+            case "Zenyte":      return "zenyte";
+            // New unified staff structure
+            case "Staff":          return "staff";
+            case "Leader":         return "leaderalt";
+            case "Deputy Owner":   return "deputyowner";
+            case "Owner":          return "owner";
+            default: return rank.toLowerCase().replace(" ", "_");
+        }
+    }
+
+    /**
+     * Loads the rank icon PNG from /com/tyrsguard/ranks/
+     * Scales it to 32x32 for display in the panel.
+     */
+    private ImageIcon loadRankIcon(String rank)
+    {
+        if (rank == null || rank.isEmpty()) return null;
+        try
+        {
+            String filename = rankToFilename(rank);
+            if (filename == null) return null;
+            String path = "/com/tyrsguard/ranks/" + filename + ".png";
+            BufferedImage img = ImageUtil.loadImageResource(getClass(), path);
+            if (img == null) return null;
+            Image scaled = img.getScaledInstance(32, 32, Image.SCALE_SMOOTH);
+            return new ImageIcon(scaled);
+        }
+        catch (Exception e)
+        {
+            log.debug("No rank icon for: {}", rank);
+            return null;
+        }
     }
 
     // ── Multipart ─────────────────────────────────────────────────────────────
