@@ -71,7 +71,7 @@ public class TyrsGuardPlugin extends Plugin
 
     private ScheduledExecutorService outboundScheduler;
     private ScheduledExecutorService pingScheduler;
-    private static final int PING_INTERVAL_SEC = 20;
+    private static final int PING_INTERVAL_SEC = 10;
     private final ConcurrentLinkedQueue<String[]> outboundQueue = new ConcurrentLinkedQueue<>();
     private static final int OUTBOUND_FLUSH_INTERVAL_SEC = 2;
 
@@ -203,40 +203,6 @@ public class TyrsGuardPlugin extends Plugin
 
         ChatMessageType type = event.getType();
 
-        // Capture GAMEMESSAGE and SPAM — drops, level ups, quests, pets, PBs, collection log etc.
-        // Read-only listener. No game interaction. Fully TOS compliant.
-        if (type == ChatMessageType.GAMEMESSAGE || type == ChatMessageType.SPAM)
-        {
-            String notifMsg = stripTags(event.getMessage());
-            if (!notifMsg.isEmpty())
-            {
-                String lower = notifMsg.toLowerCase();
-                boolean isNotable =
-                    lower.contains("received a drop") ||
-                    lower.contains("received special loot") ||
-                    lower.contains("you have a funny feeling") ||
-                    lower.contains("you feel something weird") ||
-                    lower.contains("you have completed") ||
-                    lower.contains("congratulations") ||
-                    lower.contains("quest complete") ||
-                    lower.contains("diary complete") ||
-                    lower.contains("level up") ||
-                    lower.contains("you've reached") ||
-                    lower.contains("personal best") ||
-                    lower.contains("new personal best") ||
-                    lower.contains("collection log") ||
-                    lower.contains("combat achievement") ||
-                    lower.contains("has joined the clan") ||
-                    lower.contains("has left the clan");
-                if (isNotable)
-                {
-                    String playerName = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : "";
-                    outboundQueue.add(new String[]{ "notification", playerName != null ? playerName : "", notifMsg, "Member" });
-                }
-            }
-            return;
-        }
-
         if (type != ChatMessageType.CLAN_CHAT
             && type != ChatMessageType.CLAN_GUEST_CHAT
             && type != ChatMessageType.CLAN_MESSAGE
@@ -325,6 +291,13 @@ public class TyrsGuardPlugin extends Plugin
                     }
 
                     @Override
+                    public CompletionStage<?> onPong(WebSocket ws, java.nio.ByteBuffer message)
+                    {
+                        ws.request(1);
+                        return null;
+                    }
+
+                    @Override
                     public CompletionStage<?> onClose(WebSocket ws, int statusCode, String reason)
                     {
                         wsConnected.set(false);
@@ -357,11 +330,14 @@ public class TyrsGuardPlugin extends Plugin
         if (!wsConnected.get() || webSocket == null) return;
         try
         {
-            webSocket.sendText("{\"type\":\"ping\"}", true);
+            // Use native WebSocket ping frame — keeps Railway TCP connection alive
+            webSocket.sendPing(java.nio.ByteBuffer.allocate(0));
         }
         catch (Exception e)
         {
             log.warn("Tyrs Guard Clan: WebSocket ping failed: {}", e.getMessage());
+            wsConnected.set(false);
+            webSocket = null;
         }
     }
 
