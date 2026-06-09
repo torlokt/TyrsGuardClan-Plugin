@@ -439,26 +439,40 @@ public class TyrsGuardPanel extends PluginPanel
 
         if (active && lister != null && !lister.isEmpty())
         {
+            // Clan is listed
             geStatusDot.setBackground(new Color(40, 200, 40));
+            geStatusLabel.setForeground(new Color(80, 215, 80));
+
             if (isMe)
             {
-                geStatusLabel.setText("Listed by you ✓");
-                geStatusLabel.setForeground(new Color(80, 215, 80));
+                // This player is the one who listed it
+                geStatusLabel.setText("Listed by you \u2713");
+                geListBtn.setVisible(false);
+                geClearBtn.setVisible(true);
+                geClearBtn.setEnabled(true);
             }
             else
             {
+                // Someone else has it listed — visible but disabled so players
+                // know the button exists but can't double-list
                 geStatusLabel.setText("Listed by " + lister);
-                geStatusLabel.setForeground(new Color(80, 215, 80));
+                geListBtn.setVisible(true);
+                geListBtn.setEnabled(false);
+                geListBtn.setText("Already Listed");
+                geListBtn.setToolTipText(lister + " has already listed the clan");
+                geClearBtn.setVisible(false);
             }
-            geListBtn.setVisible(!isMe);
-            geClearBtn.setVisible(isMe);
         }
         else
         {
+            // Not listed — re-enable the button so anyone can claim it
             geStatusDot.setBackground(new Color(180, 45, 45));
             geStatusLabel.setText("Not currently listed");
             geStatusLabel.setForeground(COL_DIM);
             geListBtn.setVisible(true);
+            geListBtn.setEnabled(true);
+            geListBtn.setText("\u2705 I Listed It!");
+            geListBtn.setToolTipText("Click after you've listed the clan at the Grand Exchange");
             geClearBtn.setVisible(false);
         }
 
