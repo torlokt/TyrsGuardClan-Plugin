@@ -21,6 +21,7 @@ public class TyrsGuardPanel extends PluginPanel
     private final TyrsGuardConfig config;
     private final TyrsGuardPlugin plugin;
 
+    // ── XP / Rank ─────────────────────────────────────────────────────────────
     private JLabel rankIconLabel;
     private JLabel xpLabel;
     private JLabel rankLabel;
@@ -30,6 +31,7 @@ public class TyrsGuardPanel extends PluginPanel
     private JLabel progressLabel;
     private JButton refreshXpButton;
 
+    // ── Submission form ───────────────────────────────────────────────────────
     private JComboBox<String> topCategoryDropdown;
     private JComboBox<String> subCategoryDropdown;
     private JLabel subCategoryLabel;
@@ -42,13 +44,20 @@ public class TyrsGuardPanel extends PluginPanel
     private JLabel staffNameLabel;
     private JTextArea detailsArea;
 
+    // ── Screenshot ────────────────────────────────────────────────────────────
     private BufferedImage capturedScreenshot;
     private JLabel screenshotPreviewLabel;
     private JButton screenshotButton;
     private JButton submitButton;
     private JLabel statusLabel;
 
+    // ── GE Listing ────────────────────────────────────────────────────────────
+    private JLabel  geStatusLabel;
+    private JButton geListBtn;
+    private JButton geClearBtn;
+    private JPanel  geStatusDot;
 
+    // ── Theme ─────────────────────────────────────────────────────────────────
     private static final int PAD = 8;
     private static final Color BG_DARK  = new Color(30, 30, 30);
     private static final Color BG_PANEL = new Color(42, 42, 42);
@@ -58,11 +67,11 @@ public class TyrsGuardPanel extends PluginPanel
     private static final Color COL_DIM  = new Color(140, 140, 140);
     private static final Color COL_LINK = new Color(100, 160, 255);
 
-    // Font sizes — bumped up from original
     private static final float FONT_HEADER = 16f;
     private static final float FONT_BODY   = 15f;
     private static final float FONT_SMALL  = 14f;
 
+    // ── Submission categories ─────────────────────────────────────────────────
     private static final String[] TOP_CATEGORIES = {
         "Select a category...",
         "Clan Contributions",
@@ -98,6 +107,10 @@ public class TyrsGuardPanel extends PluginPanel
         "Max Cape"
     };
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // Constructor
+    // ─────────────────────────────────────────────────────────────────────────
+
     public TyrsGuardPanel(TyrsGuardConfig config, TyrsGuardPlugin plugin)
     {
         this.config = config;
@@ -121,11 +134,12 @@ public class TyrsGuardPanel extends PluginPanel
         gbc.gridx = 0; gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0; gbc.insets = new Insets(0, 0, 6, 0);
 
-        wrapper.add(section("Tyrs Guard Clan",    headerPanel()), gbc);
-        wrapper.add(section("Your XP & Rank",     xpPanel()),     gbc);
-        wrapper.add(section("Submission Details",  formPanel()),   gbc);
-        wrapper.add(section("Screenshot",          shotPanel()),   gbc);
-        wrapper.add(submitPanel(),                                  gbc);
+        wrapper.add(section("Tyrs Guard Clan",    headerPanel()),      gbc);
+        wrapper.add(section("Your XP & Rank",     xpPanel()),          gbc);
+        wrapper.add(section("GE Clan Listing",    geListingPanel()),   gbc);
+        wrapper.add(section("Submission Details",  formPanel()),        gbc);
+        wrapper.add(section("Screenshot",          shotPanel()),        gbc);
+        wrapper.add(submitPanel(),                                       gbc);
 
         gbc.weighty = 1.0; gbc.fill = GridBagConstraints.BOTH;
         wrapper.add(Box.createVerticalGlue(), gbc);
@@ -138,7 +152,9 @@ public class TyrsGuardPanel extends PluginPanel
         add(scroll, BorderLayout.CENTER);
     }
 
-    // ── Section card ──────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Section card
+    // ─────────────────────────────────────────────────────────────────────────
 
     private JPanel section(String title, JPanel inner)
     {
@@ -157,7 +173,9 @@ public class TyrsGuardPanel extends PluginPanel
         return card;
     }
 
-    // ── Inner panels ──────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Inner panels
+    // ─────────────────────────────────────────────────────────────────────────
 
     private JPanel headerPanel()
     {
@@ -167,7 +185,6 @@ public class TyrsGuardPanel extends PluginPanel
         JLabel sub = lbl("Submit proof & earn clan XP", COL_TEXT, FONT_BODY);
         p.add(sub, g);
 
-        // ── Discord and Website buttons ──
         g.insets = new Insets(8, 0, 0, 0);
         JPanel buttonRow = new JPanel(new GridLayout(1, 2, 6, 0));
         buttonRow.setBackground(BG_PANEL);
@@ -225,9 +242,70 @@ public class TyrsGuardPanel extends PluginPanel
         g.insets = new Insets(8, 0, 0, 0);
         p.add(refreshXpButton,   g);
 
+        return p;
+    }
+
+    // ── GE Clan Listing ───────────────────────────────────────────────────────
+
+    private JPanel geListingPanel()
+    {
+        JPanel p = inner();
+        GridBagConstraints g = fillGbc();
+
+        // Description
+        p.add(lbl("Is the clan listed at the Grand Exchange?", COL_DIM, FONT_SMALL), g);
+
+        // Status row — coloured dot + text
+        g.insets = new Insets(6, 0, 0, 0);
+        JPanel statusRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+        statusRow.setBackground(BG_PANEL);
+
+        // Custom painted dot
+        geStatusDot = new JPanel()
+        {
+            @Override
+            protected void paintComponent(Graphics g2)
+            {
+                super.paintComponent(g2);
+                Graphics2D g2d = (Graphics2D) g2;
+                g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2d.setColor(getBackground());
+                g2d.fillOval(0, 0, getWidth(), getHeight());
+            }
+            @Override public Dimension getPreferredSize() { return new Dimension(12, 12); }
+            @Override public Dimension getMinimumSize()   { return getPreferredSize(); }
+        };
+        geStatusDot.setBackground(new Color(180, 45, 45));
+        geStatusDot.setOpaque(false);
+
+        geStatusLabel = lbl("Not currently listed", COL_DIM, FONT_BODY);
+
+        statusRow.add(geStatusDot);
+        statusRow.add(geStatusLabel);
+        p.add(statusRow, g);
+
+        // Buttons
+        g.insets = new Insets(8, 0, 0, 0);
+        JPanel btnRow = new JPanel(new GridLayout(1, 2, 6, 0));
+        btnRow.setBackground(BG_PANEL);
+
+        geListBtn = linkBtn("✅ I Listed It!", new Color(25, 110, 25));
+        geListBtn.setToolTipText("Click after you've listed the clan at the Grand Exchange");
+        geListBtn.addActionListener(e -> plugin.sendSetGeListing());
+
+        geClearBtn = linkBtn("❌ Unlist", new Color(130, 35, 35));
+        geClearBtn.setToolTipText("Mark the clan as no longer listed");
+        geClearBtn.setVisible(false);
+        geClearBtn.addActionListener(e -> plugin.sendClearGeListing());
+
+        btnRow.add(geListBtn);
+        btnRow.add(geClearBtn);
+        p.add(btnRow, g);
 
         return p;
     }
+
+    // ── Submission form ───────────────────────────────────────────────────────
 
     private JPanel formPanel()
     {
@@ -345,8 +423,52 @@ public class TyrsGuardPanel extends PluginPanel
         return p;
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // GE Listing — public update method (called from plugin)
+    // ─────────────────────────────────────────────────────────────────────────
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    /**
+     * Updates the GE Listing panel section to reflect the current state.
+     * Must be called on the EDT — the plugin wraps this in SwingUtilities.invokeLater.
+     */
+    public void updateGeListingStatus(boolean active, String lister)
+    {
+        String localName = plugin.getLocalPlayerName();
+        boolean isMe = localName != null && lister != null
+                       && localName.equalsIgnoreCase(lister);
+
+        if (active && lister != null && !lister.isEmpty())
+        {
+            geStatusDot.setBackground(new Color(40, 200, 40));
+            if (isMe)
+            {
+                geStatusLabel.setText("Listed by you ✓");
+                geStatusLabel.setForeground(new Color(80, 215, 80));
+            }
+            else
+            {
+                geStatusLabel.setText("Listed by " + lister);
+                geStatusLabel.setForeground(new Color(80, 215, 80));
+            }
+            geListBtn.setVisible(!isMe);
+            geClearBtn.setVisible(isMe);
+        }
+        else
+        {
+            geStatusDot.setBackground(new Color(180, 45, 45));
+            geStatusLabel.setText("Not currently listed");
+            geStatusLabel.setForeground(COL_DIM);
+            geListBtn.setVisible(true);
+            geClearBtn.setVisible(false);
+        }
+
+        revalidate();
+        repaint();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────────────
 
     private JPanel inner()
     {
@@ -432,7 +554,9 @@ public class TyrsGuardPanel extends PluginPanel
         catch (Exception e) { log.warn("Could not open URL: {}", url); }
     }
 
-    // ── Events ────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Events
+    // ─────────────────────────────────────────────────────────────────────────
 
     private void onTopCategoryChanged()
     {
@@ -613,6 +737,10 @@ public class TyrsGuardPanel extends PluginPanel
         }, "TyrsGuardClan-Submit").start();
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // XP refresh
+    // ─────────────────────────────────────────────────────────────────────────
+
     public void refreshXp()
     {
         String discordId = config.discordId().trim();
@@ -698,14 +826,12 @@ public class TyrsGuardPanel extends PluginPanel
 
     /**
      * Maps the bot's rank name to the correct PNG filename in /com/tyrsguard/ranks/
-     * Rank names come from the bot's /xp/ endpoint "rank" field.
      */
     private String rankToFilename(String rank)
     {
         if (rank == null) return null;
         switch (rank)
         {
-            // Member ranks
             case "Bronze":      return "bronze";
             case "Iron":        return "iron";
             case "Steel":       return "steel";
@@ -721,7 +847,6 @@ public class TyrsGuardPanel extends PluginPanel
             case "Onyx":        return "onyx";
             case "Legacy":      return "legacy";
             case "Zenyte":      return "zenyte";
-            // New unified staff structure
             case "Staff":          return "staff";
             case "Leader":         return "leaderalt";
             case "Deputy Owner":   return "deputyowner";
@@ -731,8 +856,7 @@ public class TyrsGuardPanel extends PluginPanel
     }
 
     /**
-     * Loads the rank icon PNG from /com/tyrsguard/ranks/
-     * Scales it to 32x32 for display in the panel.
+     * Loads the rank icon PNG from /com/tyrsguard/ranks/ and scales to 32x32.
      */
     private ImageIcon loadRankIcon(String rank)
     {
@@ -754,7 +878,9 @@ public class TyrsGuardPanel extends PluginPanel
         }
     }
 
-    // ── Multipart ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Multipart helpers
+    // ─────────────────────────────────────────────────────────────────────────
 
     private void field(OutputStream out, String b, String name, String val) throws IOException
     {
@@ -769,7 +895,9 @@ public class TyrsGuardPanel extends PluginPanel
         out.write(data);
     }
 
-    // ── JSON ──────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // JSON helpers
+    // ─────────────────────────────────────────────────────────────────────────
 
     private long jsonLong(String json, String key)
     {

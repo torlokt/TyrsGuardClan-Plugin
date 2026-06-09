@@ -8,6 +8,8 @@ import net.runelite.client.config.ConfigSection;
 @ConfigGroup("tyrsguard")
 public interface TyrsGuardConfig extends Config
 {
+    // ── Sections ──────────────────────────────────────────────────────────────
+
     @ConfigSection(
         name = "Bot Connection",
         description = "Settings for connecting to the Tyrs Guard Clan Discord bot",
@@ -21,6 +23,15 @@ public interface TyrsGuardConfig extends Config
         position = 1
     )
     String chatSection = "chat";
+
+    @ConfigSection(
+        name = "GE Listing Overlay",
+        description = "In-game overlay showing whether the clan is listed at the Grand Exchange",
+        position = 2
+    )
+    String geSection = "ge";
+
+    // ── Bot Connection ────────────────────────────────────────────────────────
 
     @ConfigItem(
         keyName = "botApiUrl",
@@ -50,6 +61,8 @@ public interface TyrsGuardConfig extends Config
     )
     default String discordId() { return ""; }
 
+    // ── Chat Bridge ───────────────────────────────────────────────────────────
+
     @ConfigItem(
         keyName = "chatBridgeEnabled",
         name = "Enable Chat Bridge",
@@ -58,4 +71,26 @@ public interface TyrsGuardConfig extends Config
         position = 0
     )
     default boolean chatBridgeEnabled() { return true; }
+
+    // ── GE Listing Overlay ────────────────────────────────────────────────────
+
+    @ConfigItem(
+        keyName = "geListingOverlayEnabled",
+        name = "Show GE Listing Overlay",
+        description = "Display a moveable overlay on the game screen showing whether the clan is " +
+                      "currently listed at the Grand Exchange. Hover it to see who listed it.",
+        section = "ge",
+        position = 0
+    )
+    default boolean geListingOverlayEnabled() { return true; }
+
+    @ConfigItem(
+        keyName = "geListingOverlayHideWhenUnlisted",
+        name = "Hide When Not Listed",
+        description = "Only show the overlay when the clan is actively listed (hides the red dot " +
+                      "entirely when no one has listed). Useful if you find the red dot distracting.",
+        section = "ge",
+        position = 1
+    )
+    default boolean geListingOverlayHideWhenUnlisted() { return false; }
 }
