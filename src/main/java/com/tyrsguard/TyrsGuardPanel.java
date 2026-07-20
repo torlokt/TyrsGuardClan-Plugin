@@ -51,11 +51,21 @@ public class TyrsGuardPanel extends PluginPanel
     private JButton submitButton;
     private JLabel statusLabel;
 
-    // ── GE Listing ────────────────────────────────────────────────────────────
-    private JLabel  geStatusLabel;
-    private JButton geListBtn;
-    private JButton geClearBtn;
-    private JPanel  geStatusDot;
+    // ── Clan Coffer & Armory ──────────────────────────────────────────────────
+    private JLabel cofferGpLabel;
+    private JLabel cofferBondsLabel;
+    private JComboBox<String> armoryCategoryDropdown;
+    private JPanel  armoryItemsPanel;
+    private JLabel  armoryStatusLabel;
+    private JButton clanHallRefreshButton;
+    private final java.util.Map<String, java.util.List<String>> armoryData = new java.util.HashMap<>();
+
+    private static final String[] ARMORY_CATEGORIES = {
+        "Select a category...",
+        "Armor Sets",
+        "Weapons",
+        "Clue Items"
+    };
 
     // ── Theme ─────────────────────────────────────────────────────────────────
     private static final int PAD = 8;
@@ -82,8 +92,6 @@ public class TyrsGuardPanel extends PluginPanel
         "Select a type...",
         "Events Participation",
         "Events Win",
-        "Recruiting",
-        "New Recruit Joined Discord",
         "Donation",
         "Hosting a Mass",
         "Hosting an Event",
@@ -136,7 +144,8 @@ public class TyrsGuardPanel extends PluginPanel
 
         wrapper.add(section("Tyrs Guard Clan",    headerPanel()),      gbc);
         wrapper.add(section("Your XP & Rank",     xpPanel()),          gbc);
-        wrapper.add(section("GE Clan Listing",    geListingPanel()),   gbc);
+        wrapper.add(section("Clan Coffer",         cofferPanel()),      gbc);
+        wrapper.add(section("Clan Armory",         armoryPanel()),      gbc);
         wrapper.add(section("Submission Details",  formPanel()),        gbc);
         wrapper.add(section("Screenshot",          shotPanel()),        gbc);
         wrapper.add(submitPanel(),                                       gbc);
@@ -150,6 +159,9 @@ public class TyrsGuardPanel extends PluginPanel
         scroll.setBorder(null);
         scroll.getViewport().setBackground(BG_DARK);
         add(scroll, BorderLayout.CENTER);
+
+        // Initial load of coffer + armory data
+        refreshClanHall();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -198,6 +210,12 @@ public class TyrsGuardPanel extends PluginPanel
         buttonRow.add(discordBtn);
         buttonRow.add(websiteBtn);
         p.add(buttonRow, g);
+
+        g.insets = new Insets(6, 0, 0, 0);
+        JButton supportBtn = linkBtn("Support The Clan", new Color(180, 140, 30));
+        supportBtn.addActionListener(e -> openUrl("https://tyrsguard.com/support"));
+        p.add(supportBtn, g);
+
         return p;
     }
 
@@ -245,64 +263,147 @@ public class TyrsGuardPanel extends PluginPanel
         return p;
     }
 
-    // ── GE Clan Listing ───────────────────────────────────────────────────────
-
-    private JPanel geListingPanel()
+    private JPanel cofferPanel()
     {
         JPanel p = inner();
         GridBagConstraints g = fillGbc();
 
-        // Description
-        p.add(lbl("Is the clan listed at the Grand Exchange?", COL_DIM, FONT_SMALL), g);
+        p.add(lbl("The clan's shared wealth, synced with the website.", COL_DIM, FONT_SMALL), g);
 
-        // Status row — coloured dot + text
         g.insets = new Insets(6, 0, 0, 0);
-        JPanel statusRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
-        statusRow.setBackground(BG_PANEL);
+        cofferGpLabel = lbl("\uD83D\uDCB0 GP: \u2014", COL_GOLD, FONT_HEADER);
+        cofferGpLabel.setFont(cofferGpLabel.getFont().deriveFont(Font.BOLD, FONT_HEADER));
+        p.add(cofferGpLabel, g);
 
-        // Custom painted dot
-        geStatusDot = new JPanel()
-        {
-            @Override
-            protected void paintComponent(Graphics g2)
-            {
-                super.paintComponent(g2);
-                Graphics2D g2d = (Graphics2D) g2;
-                g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                g2d.setColor(getBackground());
-                g2d.fillOval(0, 0, getWidth(), getHeight());
-            }
-            @Override public Dimension getPreferredSize() { return new Dimension(12, 12); }
-            @Override public Dimension getMinimumSize()   { return getPreferredSize(); }
-        };
-        geStatusDot.setBackground(new Color(180, 45, 45));
-        geStatusDot.setOpaque(false);
-
-        geStatusLabel = lbl("Not currently listed", COL_DIM, FONT_BODY);
-
-        statusRow.add(geStatusDot);
-        statusRow.add(geStatusLabel);
-        p.add(statusRow, g);
-
-        // Buttons
-        g.insets = new Insets(8, 0, 0, 0);
-        JPanel btnRow = new JPanel(new GridLayout(1, 2, 6, 0));
-        btnRow.setBackground(BG_PANEL);
-
-        geListBtn = linkBtn("✅ I Listed It!", new Color(25, 110, 25));
-        geListBtn.setToolTipText("Click after you've listed the clan at the Grand Exchange");
-        geListBtn.addActionListener(e -> plugin.sendSetGeListing());
-
-        geClearBtn = linkBtn("❌ Unlist", new Color(130, 35, 35));
-        geClearBtn.setToolTipText("Mark the clan as no longer listed");
-        geClearBtn.setVisible(false);
-        geClearBtn.addActionListener(e -> plugin.sendClearGeListing());
-
-        btnRow.add(geListBtn);
-        btnRow.add(geClearBtn);
-        p.add(btnRow, g);
+        g.insets = new Insets(4, 0, 0, 0);
+        cofferBondsLabel = lbl("\uD83D\uDD17 Bonds: \u2014", COL_TEXT, FONT_BODY);
+        p.add(cofferBondsLabel, g);
 
         return p;
+    }
+
+    private JPanel armoryPanel()
+    {
+        JPanel p = inner();
+        GridBagConstraints g = fillGbc();
+
+        p.add(lbl("High-value items the clan loans to members (Sapphire+).", COL_DIM, FONT_SMALL), g);
+
+        g.insets = new Insets(6, 0, 0, 0);
+        armoryCategoryDropdown = new JComboBox<>(ARMORY_CATEGORIES);
+        styleCombo(armoryCategoryDropdown);
+        armoryCategoryDropdown.addActionListener(e -> onArmoryCategoryChanged());
+        p.add(armoryCategoryDropdown, g);
+
+        g.insets = new Insets(6, 0, 0, 0);
+        armoryItemsPanel = new JPanel(new GridBagLayout());
+        armoryItemsPanel.setBackground(BG_PANEL);
+        p.add(armoryItemsPanel, g);
+
+        g.insets = new Insets(4, 0, 0, 0);
+        armoryStatusLabel = lbl("", COL_DIM, FONT_SMALL);
+        p.add(armoryStatusLabel, g);
+
+        g.insets = new Insets(8, 0, 0, 0);
+        clanHallRefreshButton = linkBtn("\u21BB Refresh Coffer & Armory", new Color(70, 70, 90));
+        clanHallRefreshButton.addActionListener(e -> refreshClanHall());
+        p.add(clanHallRefreshButton, g);
+
+        return p;
+    }
+
+    private void onArmoryCategoryChanged()
+    {
+        String cat = (String) armoryCategoryDropdown.getSelectedItem();
+        armoryItemsPanel.removeAll();
+        GridBagConstraints g = fillGbc();
+
+        if (cat != null && !cat.equals("Select a category..."))
+        {
+            java.util.List<String> items = armoryData.get(cat);
+            if (items == null || items.isEmpty())
+            {
+                armoryItemsPanel.add(lbl("No items in this category.", COL_DIM, FONT_SMALL), g);
+            }
+            else
+            {
+                for (String item : items)
+                {
+                    g.insets = new Insets(2, 4, 2, 0);
+                    armoryItemsPanel.add(lbl("\u2694 " + item, COL_TEXT, FONT_BODY), g);
+                }
+            }
+        }
+        armoryItemsPanel.revalidate();
+        armoryItemsPanel.repaint();
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * Fetches coffer balance + categorized armory items from the bot.
+     * Called on panel construction, on every login, and via the refresh button.
+     */
+    public void refreshClanHall()
+    {
+        String apiUrl = config.botApiUrl().trim();
+        if (apiUrl.isEmpty() || config.pluginApiSecret().isEmpty())
+        {
+            SwingUtilities.invokeLater(() ->
+                armoryStatusLabel.setText("Set Bot API URL + secret in config"));
+            return;
+        }
+        if (clanHallRefreshButton != null) clanHallRefreshButton.setEnabled(false);
+
+        new Thread(() -> {
+            try
+            {
+                HttpURLConnection conn = (HttpURLConnection)
+                    new URL(apiUrl + "/api/plugin/clanhall").openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                conn.setRequestProperty("X-Plugin-Secret", config.pluginApiSecret());
+
+                int code = conn.getResponseCode();
+                if (code == 200)
+                {
+                    String body = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                    long gp    = jsonLong(body, "coffer_gp");
+                    long bonds = jsonLong(body, "coffer_bonds");
+
+                    java.util.Map<String, java.util.List<String>> fresh = new java.util.HashMap<>();
+                    fresh.put("Armor Sets", jsonStrArray(body, "Armor Sets"));
+                    fresh.put("Weapons",    jsonStrArray(body, "Weapons"));
+                    fresh.put("Clue Items", jsonStrArray(body, "Clue Items"));
+
+                    SwingUtilities.invokeLater(() -> {
+                        cofferGpLabel.setText("\uD83D\uDCB0 GP: " + String.format("%,d", gp));
+                        cofferBondsLabel.setText("\uD83D\uDD17 Bonds: " + String.format("%,d", bonds));
+                        armoryData.clear();
+                        armoryData.putAll(fresh);
+                        int total = fresh.values().stream().mapToInt(java.util.List::size).sum();
+                        armoryStatusLabel.setText(total + " item" + (total == 1 ? "" : "s") + " available for loan");
+                        onArmoryCategoryChanged(); // re-render current category with fresh data
+                        if (clanHallRefreshButton != null) clanHallRefreshButton.setEnabled(true);
+                    });
+                }
+                else
+                {
+                    SwingUtilities.invokeLater(() -> {
+                        armoryStatusLabel.setText("Could not load (HTTP " + code + ")");
+                        if (clanHallRefreshButton != null) clanHallRefreshButton.setEnabled(true);
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                SwingUtilities.invokeLater(() -> {
+                    armoryStatusLabel.setText("Could not reach the bot");
+                    if (clanHallRefreshButton != null) clanHallRefreshButton.setEnabled(true);
+                });
+            }
+        }, "TyrsGuard-ClanHall").start();
     }
 
     // ── Submission form ───────────────────────────────────────────────────────
@@ -421,63 +522,6 @@ public class TyrsGuardPanel extends PluginPanel
         g.insets = new Insets(4, 0, 0, 0);
         p.add(submitButton, g);
         return p;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // GE Listing — public update method (called from plugin)
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Updates the GE Listing panel section to reflect the current state.
-     * Must be called on the EDT — the plugin wraps this in SwingUtilities.invokeLater.
-     */
-    public void updateGeListingStatus(boolean active, String lister)
-    {
-        String localName = plugin.getLocalPlayerName();
-        boolean isMe = localName != null && lister != null
-                       && localName.equalsIgnoreCase(lister);
-
-        if (active && lister != null && !lister.isEmpty())
-        {
-            // Clan is listed
-            geStatusDot.setBackground(new Color(40, 200, 40));
-            geStatusLabel.setForeground(new Color(80, 215, 80));
-
-            if (isMe)
-            {
-                // This player is the one who listed it
-                geStatusLabel.setText("Listed by you \u2713");
-                geListBtn.setVisible(false);
-                geClearBtn.setVisible(true);
-                geClearBtn.setEnabled(true);
-            }
-            else
-            {
-                // Someone else has it listed — visible but disabled so players
-                // know the button exists but can't double-list
-                geStatusLabel.setText("Listed by " + lister);
-                geListBtn.setVisible(true);
-                geListBtn.setEnabled(false);
-                geListBtn.setText("Already Listed");
-                geListBtn.setToolTipText(lister + " has already listed the clan");
-                geClearBtn.setVisible(false);
-            }
-        }
-        else
-        {
-            // Not listed — re-enable the button so anyone can claim it
-            geStatusDot.setBackground(new Color(180, 45, 45));
-            geStatusLabel.setText("Not currently listed");
-            geStatusLabel.setForeground(COL_DIM);
-            geListBtn.setVisible(true);
-            geListBtn.setEnabled(true);
-            geListBtn.setText("\u2705 I Listed It!");
-            geListBtn.setToolTipText("Click after you've listed the clan at the Grand Exchange");
-            geClearBtn.setVisible(false);
-        }
-
-        revalidate();
-        repaint();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -921,6 +965,34 @@ public class TyrsGuardPanel extends PluginPanel
     private String jsonStr(String json, String key)
     {
         try { String p = "\"" + key + "\":\""; int i = json.indexOf(p); if (i < 0) return null; int s = i+p.length(); int e = json.indexOf("\"",s); return e>s?json.substring(s,e):null; } catch(Exception e){return null;}
+    }
+
+
+    /**
+     * Extracts a JSON string array by key, e.g. "Weapons":["a","b"] -> [a, b].
+     * Tolerates escaped quotes inside item names.
+     */
+    private java.util.List<String> jsonStrArray(String json, String key)
+    {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        try
+        {
+            String p = "\"" + key + "\":[";
+            int i = json.indexOf(p);
+            if (i < 0) return out;
+            int s = i + p.length();
+            int e = json.indexOf("]", s);
+            if (e < 0) return out;
+            String inner = json.substring(s, e).trim();
+            if (inner.isEmpty()) return out;
+            for (String part : inner.split("\",\""))
+            {
+                String item = part.replaceAll("^\"|\"$", "").replace("\\\"", "\"").trim();
+                if (!item.isEmpty()) out.add(item);
+            }
+        }
+        catch (Exception ignored) { }
+        return out;
     }
 
     private void status(String msg, Color c) { statusLabel.setText(msg); statusLabel.setForeground(c); }

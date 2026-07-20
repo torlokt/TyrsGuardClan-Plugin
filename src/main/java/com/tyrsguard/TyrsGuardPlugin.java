@@ -22,7 +22,6 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
 import net.runelite.client.ui.DrawManager;
 import net.runelite.client.ui.NavigationButton;
-import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.Text;
 
@@ -53,14 +52,12 @@ import java.util.function.Consumer;
 )
 public class TyrsGuardPlugin extends Plugin
 {
-    @Inject private ClientToolbar    clientToolbar;
-    @Inject private TyrsGuardConfig  config;
-    @Inject private Client           client;
-    @Inject private DrawManager      drawManager;
-    @Inject private ClientThread     clientThread;
-    @Inject private EventBus         eventBus;
-    @Inject private OverlayManager   overlayManager;
-    @Inject private TyrsGuardOverlay overlay;
+    @Inject private ClientToolbar   clientToolbar;
+    @Inject private TyrsGuardConfig config;
+    @Inject private Client          client;
+    @Inject private DrawManager     drawManager;
+    @Inject private ClientThread    clientThread;
+    @Inject private EventBus        eventBus;
 
     private TyrsGuardPanel   panel;
     private NavigationButton navButton;
@@ -74,7 +71,7 @@ public class TyrsGuardPlugin extends Plugin
 
     private ScheduledExecutorService outboundScheduler;
     private ScheduledExecutorService pingScheduler;
-    private static final int PING_INTERVAL_SEC = 10;
+    private static final int PING_INTERVAL_SEC = 20;
     private final ConcurrentLinkedQueue<String[]> outboundQueue = new ConcurrentLinkedQueue<>();
     private static final int OUTBOUND_FLUSH_INTERVAL_SEC = 2;
 
@@ -92,11 +89,6 @@ public class TyrsGuardPlugin extends Plugin
             }
         }
     );
-
-    // ── GE Listing state ──────────────────────────────────────────────────────
-    private volatile boolean geListingActive = false;
-    private volatile String  geListingRsn    = null;
-    private          String  cachedLocalName = null; // safe to use after game state clears player
 
     // ─────────────────────────────────────────────────────────────────────────
     // Lifecycle
@@ -118,7 +110,6 @@ public class TyrsGuardPlugin extends Plugin
             .build();
 
         clientToolbar.addNavigation(navButton);
-        overlayManager.add(overlay);
 
         // Load Discord icon sprite on client thread
         clientThread.invoke(() -> {
@@ -156,11 +147,8 @@ public class TyrsGuardPlugin extends Plugin
             TimeUnit.SECONDS
         );
 
+
         eventBus.register(this);
-
-        // Fetch current GE listing state from the bot
-        fetchGeListingStatus();
-
         log.debug("Tyrs Guard Clan plugin started");
     }
 
@@ -169,7 +157,6 @@ public class TyrsGuardPlugin extends Plugin
     {
         eventBus.unregister(this);
         clientToolbar.removeNavigation(navButton);
-        overlayManager.remove(overlay);
 
         stopWebSocket();
 
@@ -188,45 +175,13 @@ public class TyrsGuardPlugin extends Plugin
     @Subscribe
     public void onGameStateChanged(GameStateChanged event)
     {
-        GameState state = event.getGameState();
-
-        if (state == GameState.LOGGED_IN)
+        if (event.getGameState() == GameState.LOGIN_SCREEN)
         {
-            // Cache the player name while we know it's available
-            clientThread.invokeLater(() -> {
-                if (client.getLocalPlayer() != null)
-                    cachedLocalName = client.getLocalPlayer().getName();
-                return true;
-            });
-
-            if (config.chatBridgeEnabled())
-                startWebSocket();
-
-            // Re-sync GE listing state on every login / world hop arrival
-            fetchGeListingStatus();
-            return;
-        }
-
-        if (state == GameState.HOPPING)
-        {
-            // If this player was the one who listed, auto-clear before hopping
-            if (geListingActive && cachedLocalName != null
-                    && cachedLocalName.equalsIgnoreCase(geListingRsn))
-            {
-                sendClearGeListing();
-            }
-            return;
-        }
-
-        if (state == GameState.LOGIN_SCREEN)
-        {
-            // If this player was the one who listed, auto-clear on logout
-            if (geListingActive && cachedLocalName != null
-                    && cachedLocalName.equalsIgnoreCase(geListingRsn))
-            {
-                sendClearGeListing();
-            }
             stopWebSocket();
+        }
+        if (event.getGameState() == GameState.LOGGED_IN && config.chatBridgeEnabled())
+        {
+            startWebSocket();
         }
     }
 
@@ -247,6 +202,40 @@ public class TyrsGuardPlugin extends Plugin
         if (!config.chatBridgeEnabled()) return;
 
         ChatMessageType type = event.getType();
+
+        // Capture GAMEMESSAGE and SPAM — drops, level ups, quests, pets, PBs, collection log etc.
+        // Read-only listener. No game interaction. Fully TOS compliant.
+        if (type == ChatMessageType.GAMEMESSAGE || type == ChatMessageType.SPAM)
+        {
+            String notifMsg = stripTags(event.getMessage());
+            if (!notifMsg.isEmpty())
+            {
+                String lower = notifMsg.toLowerCase();
+                boolean isNotable =
+                    lower.contains("received a drop") ||
+                    lower.contains("received special loot") ||
+                    lower.contains("you have a funny feeling") ||
+                    lower.contains("you feel something weird") ||
+                    lower.contains("you have completed") ||
+                    lower.contains("congratulations") ||
+                    lower.contains("quest complete") ||
+                    lower.contains("diary complete") ||
+                    lower.contains("level up") ||
+                    lower.contains("you've reached") ||
+                    lower.contains("personal best") ||
+                    lower.contains("new personal best") ||
+                    lower.contains("collection log") ||
+                    lower.contains("combat achievement") ||
+                    lower.contains("has joined the clan") ||
+                    lower.contains("has left the clan");
+                if (isNotable)
+                {
+                    String playerName = client.getLocalPlayer() != null ? client.getLocalPlayer().getName() : "";
+                    outboundQueue.add(new String[]{ "notification", playerName != null ? playerName : "", notifMsg, "Member" });
+                }
+            }
+            return;
+        }
 
         if (type != ChatMessageType.CLAN_CHAT
             && type != ChatMessageType.CLAN_GUEST_CHAT
@@ -336,13 +325,6 @@ public class TyrsGuardPlugin extends Plugin
                     }
 
                     @Override
-                    public CompletionStage<?> onPong(WebSocket ws, java.nio.ByteBuffer message)
-                    {
-                        ws.request(1);
-                        return null;
-                    }
-
-                    @Override
                     public CompletionStage<?> onClose(WebSocket ws, int statusCode, String reason)
                     {
                         wsConnected.set(false);
@@ -369,19 +351,17 @@ public class TyrsGuardPlugin extends Plugin
         }
     }
 
+
     private void sendWebSocketPing()
     {
         if (!wsConnected.get() || webSocket == null) return;
         try
         {
-            // Use native WebSocket ping frame — keeps Railway TCP connection alive
-            webSocket.sendPing(java.nio.ByteBuffer.allocate(0));
+            webSocket.sendText("{\"type\":\"ping\"}", true);
         }
         catch (Exception e)
         {
             log.warn("Tyrs Guard Clan: WebSocket ping failed: {}", e.getMessage());
-            wsConnected.set(false);
-            webSocket = null;
         }
     }
 
@@ -408,27 +388,15 @@ public class TyrsGuardPlugin extends Plugin
 
     /**
      * Handles a JSON message pushed from the bot over the WebSocket.
+     * Expected format: {"sender":"Name","message":"Hello"}
      *
-     * Supports two shapes:
-     *   Chat:       {"sender":"Name","message":"Hello"}
-     *   GE listing: {"type":"ge_listing_update","active":true,"lister":"PlayerName"}
+     * FIX: clan channel name must be fetched on the client thread.
+     * FIX: discord icon path corrected to /com/tyrsguard/discord_icon.png
      */
     private void handleIncomingMessage(String json)
     {
         try
         {
-            // ── Check for typed broadcast messages first ───────────────────────
-            String msgType = extractJsonStr(json, "type");
-
-            if ("ge_listing_update".equals(msgType))
-            {
-                boolean active = json.contains("\"active\":true");
-                String  lister = extractJsonStr(json, "lister");
-                applyGeListingUpdate(active, active ? lister : null);
-                return;
-            }
-
-            // ── Existing chat message path ─────────────────────────────────────
             String sender  = extractJsonStr(json, "sender");
             String message = extractJsonStr(json, "message");
             if (sender == null || message == null || message.isEmpty()) return;
@@ -524,142 +492,6 @@ public class TyrsGuardPlugin extends Plugin
                 log.warn("Tyrs Guard Clan: Outbound batch error: {}", e.getMessage());
             }
         }, "TyrsGuardClan-ChatSend").start();
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────
-    // GE Clan Listing
-    // ─────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Central state-update method. Always call this instead of setting
-     * geListingActive / geListingRsn directly so both the panel and the
-     * overlay stay in sync.
-     */
-    private void applyGeListingUpdate(boolean active, String lister)
-    {
-        geListingActive = active;
-        geListingRsn    = active ? lister : null;
-        overlay.setListingState(active, geListingRsn);                              // safe from any thread
-        SwingUtilities.invokeLater(() -> panel.updateGeListingStatus(active, lister)); // panel needs EDT
-    }
-
-    /**
-     * Fetches the current GE listing state from the bot on startup / world-hop.
-     * Falls back silently if the bot is unreachable.
-     */
-    public void fetchGeListingStatus()
-    {
-        String apiUrl = config.botApiUrl().trim();
-        if (apiUrl.isEmpty() || config.pluginApiSecret().isEmpty()) return;
-
-        new Thread(() -> {
-            try
-            {
-                HttpURLConnection conn = (HttpURLConnection)
-                    new URL(apiUrl + "/ge-listing").openConnection();
-                conn.setRequestMethod("GET");
-                conn.setConnectTimeout(5000);
-                conn.setReadTimeout(5000);
-                conn.setRequestProperty("X-Plugin-Secret", config.pluginApiSecret());
-
-                if (conn.getResponseCode() == 200)
-                {
-                    String  body   = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-                    boolean active = body.contains("\"active\":true");
-                    String  lister = extractJsonStr(body, "lister");
-                    applyGeListingUpdate(active, active ? lister : null);
-                }
-            }
-            catch (Exception e)
-            {
-                log.warn("Tyrs Guard Clan: GE listing fetch error: {}", e.getMessage());
-            }
-        }, "TyrsGuard-GEFetch").start();
-    }
-
-    /**
-     * Called when the local player clicks "I Listed It!" in the panel.
-     * Does an optimistic local update immediately, then POSTs to the bot
-     * which will broadcast the new state to all other connected plugins.
-     */
-    public void sendSetGeListing()
-    {
-        String rsn = getLocalPlayerName();
-        if (rsn == null || rsn.isEmpty()) return;
-
-        // Optimistic update — local player sees instant feedback
-        applyGeListingUpdate(true, rsn);
-
-        String apiUrl = config.botApiUrl().trim();
-        if (apiUrl.isEmpty()) return;
-
-        final String payload = "{\"rsn\":\"" + escapeJson(rsn) + "\"}";
-        new Thread(() -> {
-            try
-            {
-                HttpURLConnection conn = (HttpURLConnection)
-                    new URL(apiUrl + "/ge-listing").openConnection();
-                conn.setRequestMethod("POST");
-                conn.setDoOutput(true);
-                conn.setConnectTimeout(5000);
-                conn.setReadTimeout(5000);
-                conn.setRequestProperty("Content-Type",    "application/json");
-                conn.setRequestProperty("X-Plugin-Secret", config.pluginApiSecret());
-                try (OutputStream out = conn.getOutputStream())
-                {
-                    out.write(payload.getBytes(StandardCharsets.UTF_8));
-                }
-                if (conn.getResponseCode() != 200)
-                    log.warn("Tyrs Guard Clan: GE listing set failed HTTP {}", conn.getResponseCode());
-            }
-            catch (Exception e)
-            {
-                log.warn("Tyrs Guard Clan: GE listing set error: {}", e.getMessage());
-            }
-        }, "TyrsGuard-GESet").start();
-    }
-
-    /**
-     * Called when the local player clicks "Unlist" in the panel, or automatically
-     * when they log out / hop worlds while they are the current lister.
-     * Uses cachedLocalName as fallback since getLocalPlayerName() may return null
-     * after the game state has already changed.
-     */
-    public void sendClearGeListing()
-    {
-        String rsn = getLocalPlayerName();
-        if (rsn == null) rsn = cachedLocalName;
-        if (rsn == null || rsn.isEmpty()) return;
-
-        // Optimistic update
-        applyGeListingUpdate(false, null);
-
-        String apiUrl = config.botApiUrl().trim();
-        if (apiUrl.isEmpty()) return;
-
-        final String payload = "{\"rsn\":\"" + escapeJson(rsn) + "\"}";
-        new Thread(() -> {
-            try
-            {
-                HttpURLConnection conn = (HttpURLConnection)
-                    new URL(apiUrl + "/ge-listing/clear").openConnection();
-                conn.setRequestMethod("POST");
-                conn.setDoOutput(true);
-                conn.setConnectTimeout(5000);
-                conn.setReadTimeout(5000);
-                conn.setRequestProperty("Content-Type",    "application/json");
-                conn.setRequestProperty("X-Plugin-Secret", config.pluginApiSecret());
-                try (OutputStream out = conn.getOutputStream())
-                {
-                    out.write(payload.getBytes(StandardCharsets.UTF_8));
-                }
-                // fire-and-forget; the WS broadcast will update all other clients
-            }
-            catch (Exception e)
-            {
-                log.warn("Tyrs Guard Clan: GE listing clear error: {}", e.getMessage());
-            }
-        }, "TyrsGuard-GEClear").start();
     }
 
     // ─────────────────────────────────────────────────────────────────────────

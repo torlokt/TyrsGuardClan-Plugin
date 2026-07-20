@@ -1,4 +1,5 @@
 # Tyrs Guard Clan Plugin
+
 A RuneLite plugin built exclusively for members of the **Tyr's Guard** OSRS clan. This plugin connects to the clan's private Discord bot to provide seamless integration between the game and the clan's Discord server.
 
 > ⚠️ **This plugin requires access to Tyr's Guard's private clan bot to function. It is intended only for Tyr's Guard clan members. Without the correct configuration it will do nothing.**
@@ -16,16 +17,13 @@ View your current clan XP, rank, and progress toward your next rank directly in 
 ### 💬 Clan Chat Bridge *(Opt-in)*
 Optionally bridge your in-game clan chat to the clan's Discord channel and vice versa. Messages sent in the Discord clan chat channel will appear in your in-game clan chat, and your in-game clan chat messages will appear in Discord. This feature is **completely optional** and can be toggled off at any time in the plugin settings.
 
-### 📢 Grand Exchange Advertisement Overlay *(Opt-in)*
-Displays an onscreen overlay showing whether Tyr's Guard is currently listed on the Grand Exchange advertisement board, and which clan member has it listed. This makes it easy for members to know when the clan is actively being advertised without having to check the board themselves. The overlay can be toggled on or off at any time in the plugin settings.
-
 ---
 
 ## Privacy & Data
+
 - **All features are opt-in.** Nothing is sent anywhere until you configure the plugin with your own Discord ID and the clan bot's URL.
 - **No data is collected by this plugin beyond what you explicitly submit.** Screenshots are only sent when you press the submit button.
 - **The chat bridge only activates if you enable it in settings.** It can be turned off at any time.
-- **The GE advertisement overlay only activates if you enable it in settings.** It can be turned off at any time.
 - **Your Discord ID is stored locally in your RuneLite config** and is only used to identify your submissions and look up your XP on the clan bot.
 - The plugin communicates exclusively with Tyr's Guard's private clan bot server. No data is sent to any third party.
 
@@ -52,10 +50,9 @@ You will need the following from a Tyr's Guard staff member:
    - **Plugin API Secret** — provided by clan staff
    - **Discord ID** — your Discord user ID from Step 2
 4. Optionally enable or disable the **Chat Bridge** toggle depending on whether you want clan chat bridged to Discord
-5. Optionally enable or disable the **GE Advertisement Overlay** toggle depending on whether you want to see active advertisement status onscreen
 
 ### Step 4 — You're all set
-Open the plugin panel by clicking the Tyr's Guard icon in the RuneLite sidebar. You can now submit screenshots, view your XP and rank, use the clan chat bridge, and monitor the clan's Grand Exchange advertisement status.
+Open the plugin panel by clicking the Tyr's Guard icon in the RuneLite sidebar. You can now submit screenshots, view your XP and rank, and use the clan chat bridge if enabled.
 
 ---
 
@@ -67,9 +64,9 @@ Open the plugin panel by clicking the Tyr's Guard icon in the RuneLite sidebar. 
 | Plugin API Secret | Secret key to authenticate with the bot | Yes |
 | Discord ID | Your Discord user ID | Yes |
 | Enable Chat Bridge | Toggle clan chat ↔ Discord bridging on or off | Optional |
-| Enable GE Ad Overlay | Toggle the Grand Exchange advertisement overlay on or off | Optional |
 
 ---
 
 ## Support
+
 If you have issues with the plugin, reach out to Tyr's Guard staff in the clan Discord. This plugin is maintained by the clan and is not officially supported by RuneLite.
