@@ -77,9 +77,9 @@ public class TyrsGuardPanel extends PluginPanel
     private static final Color COL_DIM  = new Color(140, 140, 140);
     private static final Color COL_LINK = new Color(100, 160, 255);
 
-    private static final float FONT_HEADER = 16f;
-    private static final float FONT_BODY   = 15f;
-    private static final float FONT_SMALL  = 14f;
+    private static final float FONT_HEADER = 13f;
+    private static final float FONT_BODY   = 12f;
+    private static final float FONT_SMALL  = 11f;
 
     // ── Submission categories ─────────────────────────────────────────────────
     private static final String[] TOP_CATEGORIES = {
