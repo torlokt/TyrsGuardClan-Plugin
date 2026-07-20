@@ -21,6 +21,7 @@ public class TyrsGuardPanel extends PluginPanel
     private final TyrsGuardConfig config;
     private final TyrsGuardPlugin plugin;
 
+    // ── XP / Rank ─────────────────────────────────────────────────────────────
     private JLabel rankIconLabel;
     private JLabel xpLabel;
     private JLabel rankLabel;
@@ -30,6 +31,7 @@ public class TyrsGuardPanel extends PluginPanel
     private JLabel progressLabel;
     private JButton refreshXpButton;
 
+    // ── Submission form ───────────────────────────────────────────────────────
     private JComboBox<String> topCategoryDropdown;
     private JComboBox<String> subCategoryDropdown;
     private JLabel subCategoryLabel;
@@ -42,13 +44,30 @@ public class TyrsGuardPanel extends PluginPanel
     private JLabel staffNameLabel;
     private JTextArea detailsArea;
 
+    // ── Screenshot ────────────────────────────────────────────────────────────
     private BufferedImage capturedScreenshot;
     private JLabel screenshotPreviewLabel;
     private JButton screenshotButton;
     private JButton submitButton;
     private JLabel statusLabel;
 
+    // ── Clan Coffer & Armory ──────────────────────────────────────────────────
+    private JLabel cofferGpLabel;
+    private JLabel cofferBondsLabel;
+    private JComboBox<String> armoryCategoryDropdown;
+    private JPanel  armoryItemsPanel;
+    private JLabel  armoryStatusLabel;
+    private JButton clanHallRefreshButton;
+    private final java.util.Map<String, java.util.List<String>> armoryData = new java.util.HashMap<>();
 
+    private static final String[] ARMORY_CATEGORIES = {
+        "Select a category...",
+        "Armor Sets",
+        "Weapons",
+        "Clue Items"
+    };
+
+    // ── Theme ─────────────────────────────────────────────────────────────────
     private static final int PAD = 8;
     private static final Color BG_DARK  = new Color(30, 30, 30);
     private static final Color BG_PANEL = new Color(42, 42, 42);
@@ -58,11 +77,11 @@ public class TyrsGuardPanel extends PluginPanel
     private static final Color COL_DIM  = new Color(140, 140, 140);
     private static final Color COL_LINK = new Color(100, 160, 255);
 
-    // Font sizes — bumped up from original
     private static final float FONT_HEADER = 16f;
     private static final float FONT_BODY   = 15f;
     private static final float FONT_SMALL  = 14f;
 
+    // ── Submission categories ─────────────────────────────────────────────────
     private static final String[] TOP_CATEGORIES = {
         "Select a category...",
         "Clan Contributions",
@@ -73,8 +92,6 @@ public class TyrsGuardPanel extends PluginPanel
         "Select a type...",
         "Events Participation",
         "Events Win",
-        "Recruiting",
-        "New Recruit Joined Discord",
         "Donation",
         "Hosting a Mass",
         "Hosting an Event",
@@ -97,6 +114,10 @@ public class TyrsGuardPanel extends PluginPanel
         "Music Cape",
         "Max Cape"
     };
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Constructor
+    // ─────────────────────────────────────────────────────────────────────────
 
     public TyrsGuardPanel(TyrsGuardConfig config, TyrsGuardPlugin plugin)
     {
@@ -121,11 +142,13 @@ public class TyrsGuardPanel extends PluginPanel
         gbc.gridx = 0; gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.weightx = 1.0; gbc.insets = new Insets(0, 0, 6, 0);
 
-        wrapper.add(section("Tyrs Guard Clan",    headerPanel()), gbc);
-        wrapper.add(section("Your XP & Rank",     xpPanel()),     gbc);
-        wrapper.add(section("Submission Details",  formPanel()),   gbc);
-        wrapper.add(section("Screenshot",          shotPanel()),   gbc);
-        wrapper.add(submitPanel(),                                  gbc);
+        wrapper.add(section("Tyrs Guard Clan",    headerPanel()),      gbc);
+        wrapper.add(section("Your XP & Rank",     xpPanel()),          gbc);
+        wrapper.add(section("Clan Coffer",         cofferPanel()),      gbc);
+        wrapper.add(section("Clan Armory",         armoryPanel()),      gbc);
+        wrapper.add(section("Submission Details",  formPanel()),        gbc);
+        wrapper.add(section("Screenshot",          shotPanel()),        gbc);
+        wrapper.add(submitPanel(),                                       gbc);
 
         gbc.weighty = 1.0; gbc.fill = GridBagConstraints.BOTH;
         wrapper.add(Box.createVerticalGlue(), gbc);
@@ -136,9 +159,14 @@ public class TyrsGuardPanel extends PluginPanel
         scroll.setBorder(null);
         scroll.getViewport().setBackground(BG_DARK);
         add(scroll, BorderLayout.CENTER);
+
+        // Initial load of coffer + armory data
+        refreshClanHall();
     }
 
-    // ── Section card ──────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Section card
+    // ─────────────────────────────────────────────────────────────────────────
 
     private JPanel section(String title, JPanel inner)
     {
@@ -157,7 +185,9 @@ public class TyrsGuardPanel extends PluginPanel
         return card;
     }
 
-    // ── Inner panels ──────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Inner panels
+    // ─────────────────────────────────────────────────────────────────────────
 
     private JPanel headerPanel()
     {
@@ -167,7 +197,6 @@ public class TyrsGuardPanel extends PluginPanel
         JLabel sub = lbl("Submit proof & earn clan XP", COL_TEXT, FONT_BODY);
         p.add(sub, g);
 
-        // ── Discord and Website buttons ──
         g.insets = new Insets(8, 0, 0, 0);
         JPanel buttonRow = new JPanel(new GridLayout(1, 2, 6, 0));
         buttonRow.setBackground(BG_PANEL);
@@ -181,6 +210,12 @@ public class TyrsGuardPanel extends PluginPanel
         buttonRow.add(discordBtn);
         buttonRow.add(websiteBtn);
         p.add(buttonRow, g);
+
+        g.insets = new Insets(6, 0, 0, 0);
+        JButton supportBtn = linkBtn("Support The Clan", new Color(180, 140, 30));
+        supportBtn.addActionListener(e -> openUrl("https://tyrsguard.com/support"));
+        p.add(supportBtn, g);
+
         return p;
     }
 
@@ -225,9 +260,153 @@ public class TyrsGuardPanel extends PluginPanel
         g.insets = new Insets(8, 0, 0, 0);
         p.add(refreshXpButton,   g);
 
+        return p;
+    }
+
+    private JPanel cofferPanel()
+    {
+        JPanel p = inner();
+        GridBagConstraints g = fillGbc();
+
+        p.add(lbl("The clan's shared wealth, synced with the website.", COL_DIM, FONT_SMALL), g);
+
+        g.insets = new Insets(6, 0, 0, 0);
+        cofferGpLabel = lbl("\uD83D\uDCB0 GP: \u2014", COL_GOLD, FONT_HEADER);
+        cofferGpLabel.setFont(cofferGpLabel.getFont().deriveFont(Font.BOLD, FONT_HEADER));
+        p.add(cofferGpLabel, g);
+
+        g.insets = new Insets(4, 0, 0, 0);
+        cofferBondsLabel = lbl("\uD83D\uDD17 Bonds: \u2014", COL_TEXT, FONT_BODY);
+        p.add(cofferBondsLabel, g);
 
         return p;
     }
+
+    private JPanel armoryPanel()
+    {
+        JPanel p = inner();
+        GridBagConstraints g = fillGbc();
+
+        p.add(lbl("High-value items the clan loans to members (Sapphire+).", COL_DIM, FONT_SMALL), g);
+
+        g.insets = new Insets(6, 0, 0, 0);
+        armoryCategoryDropdown = new JComboBox<>(ARMORY_CATEGORIES);
+        styleCombo(armoryCategoryDropdown);
+        armoryCategoryDropdown.addActionListener(e -> onArmoryCategoryChanged());
+        p.add(armoryCategoryDropdown, g);
+
+        g.insets = new Insets(6, 0, 0, 0);
+        armoryItemsPanel = new JPanel(new GridBagLayout());
+        armoryItemsPanel.setBackground(BG_PANEL);
+        p.add(armoryItemsPanel, g);
+
+        g.insets = new Insets(4, 0, 0, 0);
+        armoryStatusLabel = lbl("", COL_DIM, FONT_SMALL);
+        p.add(armoryStatusLabel, g);
+
+        g.insets = new Insets(8, 0, 0, 0);
+        clanHallRefreshButton = linkBtn("\u21BB Refresh Coffer & Armory", new Color(70, 70, 90));
+        clanHallRefreshButton.addActionListener(e -> refreshClanHall());
+        p.add(clanHallRefreshButton, g);
+
+        return p;
+    }
+
+    private void onArmoryCategoryChanged()
+    {
+        String cat = (String) armoryCategoryDropdown.getSelectedItem();
+        armoryItemsPanel.removeAll();
+        GridBagConstraints g = fillGbc();
+
+        if (cat != null && !cat.equals("Select a category..."))
+        {
+            java.util.List<String> items = armoryData.get(cat);
+            if (items == null || items.isEmpty())
+            {
+                armoryItemsPanel.add(lbl("No items in this category.", COL_DIM, FONT_SMALL), g);
+            }
+            else
+            {
+                for (String item : items)
+                {
+                    g.insets = new Insets(2, 4, 2, 0);
+                    armoryItemsPanel.add(lbl("\u2694 " + item, COL_TEXT, FONT_BODY), g);
+                }
+            }
+        }
+        armoryItemsPanel.revalidate();
+        armoryItemsPanel.repaint();
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * Fetches coffer balance + categorized armory items from the bot.
+     * Called on panel construction, on every login, and via the refresh button.
+     */
+    public void refreshClanHall()
+    {
+        String apiUrl = config.botApiUrl().trim();
+        if (apiUrl.isEmpty() || config.pluginApiSecret().isEmpty())
+        {
+            SwingUtilities.invokeLater(() ->
+                armoryStatusLabel.setText("Set Bot API URL + secret in config"));
+            return;
+        }
+        if (clanHallRefreshButton != null) clanHallRefreshButton.setEnabled(false);
+
+        new Thread(() -> {
+            try
+            {
+                HttpURLConnection conn = (HttpURLConnection)
+                    new URL(apiUrl + "/api/plugin/clanhall").openConnection();
+                conn.setRequestMethod("GET");
+                conn.setConnectTimeout(8000);
+                conn.setReadTimeout(8000);
+                conn.setRequestProperty("X-Plugin-Secret", config.pluginApiSecret());
+
+                int code = conn.getResponseCode();
+                if (code == 200)
+                {
+                    String body = new String(conn.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+                    long gp    = jsonLong(body, "coffer_gp");
+                    long bonds = jsonLong(body, "coffer_bonds");
+
+                    java.util.Map<String, java.util.List<String>> fresh = new java.util.HashMap<>();
+                    fresh.put("Armor Sets", jsonStrArray(body, "Armor Sets"));
+                    fresh.put("Weapons",    jsonStrArray(body, "Weapons"));
+                    fresh.put("Clue Items", jsonStrArray(body, "Clue Items"));
+
+                    SwingUtilities.invokeLater(() -> {
+                        cofferGpLabel.setText("\uD83D\uDCB0 GP: " + String.format("%,d", gp));
+                        cofferBondsLabel.setText("\uD83D\uDD17 Bonds: " + String.format("%,d", bonds));
+                        armoryData.clear();
+                        armoryData.putAll(fresh);
+                        int total = fresh.values().stream().mapToInt(java.util.List::size).sum();
+                        armoryStatusLabel.setText(total + " item" + (total == 1 ? "" : "s") + " available for loan");
+                        onArmoryCategoryChanged(); // re-render current category with fresh data
+                        if (clanHallRefreshButton != null) clanHallRefreshButton.setEnabled(true);
+                    });
+                }
+                else
+                {
+                    SwingUtilities.invokeLater(() -> {
+                        armoryStatusLabel.setText("Could not load (HTTP " + code + ")");
+                        if (clanHallRefreshButton != null) clanHallRefreshButton.setEnabled(true);
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                SwingUtilities.invokeLater(() -> {
+                    armoryStatusLabel.setText("Could not reach the bot");
+                    if (clanHallRefreshButton != null) clanHallRefreshButton.setEnabled(true);
+                });
+            }
+        }, "TyrsGuard-ClanHall").start();
+    }
+
+    // ── Submission form ───────────────────────────────────────────────────────
 
     private JPanel formPanel()
     {
@@ -345,8 +524,9 @@ public class TyrsGuardPanel extends PluginPanel
         return p;
     }
 
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────────────
 
     private JPanel inner()
     {
@@ -432,7 +612,9 @@ public class TyrsGuardPanel extends PluginPanel
         catch (Exception e) { log.warn("Could not open URL: {}", url); }
     }
 
-    // ── Events ────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Events
+    // ─────────────────────────────────────────────────────────────────────────
 
     private void onTopCategoryChanged()
     {
@@ -613,6 +795,10 @@ public class TyrsGuardPanel extends PluginPanel
         }, "TyrsGuardClan-Submit").start();
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // XP refresh
+    // ─────────────────────────────────────────────────────────────────────────
+
     public void refreshXp()
     {
         String discordId = config.discordId().trim();
@@ -698,14 +884,12 @@ public class TyrsGuardPanel extends PluginPanel
 
     /**
      * Maps the bot's rank name to the correct PNG filename in /com/tyrsguard/ranks/
-     * Rank names come from the bot's /xp/ endpoint "rank" field.
      */
     private String rankToFilename(String rank)
     {
         if (rank == null) return null;
         switch (rank)
         {
-            // Member ranks
             case "Bronze":      return "bronze";
             case "Iron":        return "iron";
             case "Steel":       return "steel";
@@ -721,7 +905,6 @@ public class TyrsGuardPanel extends PluginPanel
             case "Onyx":        return "onyx";
             case "Legacy":      return "legacy";
             case "Zenyte":      return "zenyte";
-            // New unified staff structure
             case "Staff":          return "staff";
             case "Leader":         return "leaderalt";
             case "Deputy Owner":   return "deputyowner";
@@ -731,8 +914,7 @@ public class TyrsGuardPanel extends PluginPanel
     }
 
     /**
-     * Loads the rank icon PNG from /com/tyrsguard/ranks/
-     * Scales it to 32x32 for display in the panel.
+     * Loads the rank icon PNG from /com/tyrsguard/ranks/ and scales to 32x32.
      */
     private ImageIcon loadRankIcon(String rank)
     {
@@ -754,7 +936,9 @@ public class TyrsGuardPanel extends PluginPanel
         }
     }
 
-    // ── Multipart ─────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Multipart helpers
+    // ─────────────────────────────────────────────────────────────────────────
 
     private void field(OutputStream out, String b, String name, String val) throws IOException
     {
@@ -769,7 +953,9 @@ public class TyrsGuardPanel extends PluginPanel
         out.write(data);
     }
 
-    // ── JSON ──────────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // JSON helpers
+    // ─────────────────────────────────────────────────────────────────────────
 
     private long jsonLong(String json, String key)
     {
@@ -779,6 +965,34 @@ public class TyrsGuardPanel extends PluginPanel
     private String jsonStr(String json, String key)
     {
         try { String p = "\"" + key + "\":\""; int i = json.indexOf(p); if (i < 0) return null; int s = i+p.length(); int e = json.indexOf("\"",s); return e>s?json.substring(s,e):null; } catch(Exception e){return null;}
+    }
+
+
+    /**
+     * Extracts a JSON string array by key, e.g. "Weapons":["a","b"] -> [a, b].
+     * Tolerates escaped quotes inside item names.
+     */
+    private java.util.List<String> jsonStrArray(String json, String key)
+    {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        try
+        {
+            String p = "\"" + key + "\":[";
+            int i = json.indexOf(p);
+            if (i < 0) return out;
+            int s = i + p.length();
+            int e = json.indexOf("]", s);
+            if (e < 0) return out;
+            String inner = json.substring(s, e).trim();
+            if (inner.isEmpty()) return out;
+            for (String part : inner.split("\",\""))
+            {
+                String item = part.replaceAll("^\"|\"$", "").replace("\\\"", "\"").trim();
+                if (!item.isEmpty()) out.add(item);
+            }
+        }
+        catch (Exception ignored) { }
+        return out;
     }
 
     private void status(String msg, Color c) { statusLabel.setText(msg); statusLabel.setForeground(c); }
