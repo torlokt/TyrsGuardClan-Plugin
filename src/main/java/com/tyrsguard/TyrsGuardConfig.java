@@ -8,6 +8,8 @@ import net.runelite.client.config.ConfigSection;
 @ConfigGroup("tyrsguard")
 public interface TyrsGuardConfig extends Config
 {
+    // ── Sections ──────────────────────────────────────────────────────────────
+
     @ConfigSection(
         name = "Bot Connection",
         description = "Settings for connecting to the Tyrs Guard Clan Discord bot",
@@ -21,6 +23,8 @@ public interface TyrsGuardConfig extends Config
         position = 1
     )
     String chatSection = "chat";
+
+    // ── Bot Connection ────────────────────────────────────────────────────────
 
     @ConfigItem(
         keyName = "botApiUrl",
@@ -49,6 +53,8 @@ public interface TyrsGuardConfig extends Config
         position = 2
     )
     default String discordId() { return ""; }
+
+    // ── Chat Bridge ───────────────────────────────────────────────────────────
 
     @ConfigItem(
         keyName = "chatBridgeEnabled",
