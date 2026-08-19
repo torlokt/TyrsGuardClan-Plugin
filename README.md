@@ -1,72 +1,124 @@
 # Tyrs Guard Clan Plugin
 
-A RuneLite plugin built exclusively for members of the **Tyr's Guard** OSRS clan. This plugin connects to the clan's private Discord bot to provide seamless integration between the game and the clan's Discord server.
+A RuneLite plugin built exclusively for members of the **Tyr's Guard** OSRS clan. This plugin connects to the clan's private Discord bot to provide integration between the game and the clan's Discord server.
 
-> ⚠️ **This plugin requires access to Tyr's Guard's private clan bot to function. It is intended only for Tyr's Guard clan members. Without the correct configuration it will do nothing.**
+> ⚠️ **This plugin requires access to Tyr's Guard's private clan bot to function. It is intended only for Tyr's Guard clan members. Without the correct configuration it does nothing.**
 
 ---
 
 ## Features
 
 ### 📸 Screenshot Submissions
-Submit screenshots directly from RuneLite to the clan's Discord submissions channel. Screenshots are automatically stamped with your local date and time, along with CST and GMT conversions, so staff can verify submissions across time zones at a glance.
+
+Submit screenshots directly from RuneLite to the clan's Discord submissions channel. Screenshots are stamped with your local date and time, along with CST and GMT conversions, so staff can verify submissions across time zones.
 
 ### ⚔️ XP & Rank Tracking
-View your current clan XP, rank, and progress toward your next rank directly in the plugin panel. The clan uses a custom rank system based on participation and activity.
 
-### 💬 Clan Chat Bridge *(Opt-in)*
-Optionally bridge your in-game clan chat to the clan's Discord channel and vice versa. Messages sent in the Discord clan chat channel will appear in your in-game clan chat, and your in-game clan chat messages will appear in Discord. This feature is **completely optional** and can be toggled off at any time in the plugin settings.
+View your current clan XP, rank, and progress toward your next rank in the plugin panel. The clan uses a custom rank system based on participation and activity.
+
+### 💬 Clan Chat Bridge
+
+Bridges your in-game clan chat to the clan's Discord channel and back. Messages in the Discord clan chat channel appear in your in-game clan chat, and clan chat messages appear in Discord.
+
+**This is enabled by default** and can be turned off at any time in the plugin settings. Only messages from the Tyr's Guard clan chats are bridged — private messages, friends chat and public chat are never sent.
+
+### 🗺️ Clan Map — Location Sharing *(opt-in, OFF by default)*
+
+Shows clan members on the RuneLite world map, with their rank icon and a coarse activity label.
+
+**This feature is OFF by default and must be explicitly enabled.** See the Privacy & Data section below for exactly what is sent when you turn it on.
+
+Your location is **never** shared while you are in the Wilderness or on a PvP world, regardless of your settings — this is enforced in code and cannot be overridden by configuration.
 
 ---
 
 ## Privacy & Data
 
-- **All features are opt-in.** Nothing is sent anywhere until you configure the plugin with your own Discord ID and the clan bot's URL.
-- **No data is collected by this plugin beyond what you explicitly submit.** Screenshots are only sent when you press the submit button.
-- **The chat bridge only activates if you enable it in settings.** It can be turned off at any time.
-- **Your Discord ID is stored locally in your RuneLite config** and is only used to identify your submissions and look up your XP on the clan bot.
-- The plugin communicates exclusively with Tyr's Guard's private clan bot server. No data is sent to any third party.
+This plugin communicates with a private server operated by Tyr's Guard clan leadership. Under RuneLite's definitions this is a **third-party server** — it is not run by RuneLite or Jagex. Below is exactly what is sent, and when.
+
+### Nothing is sent until configured
+
+With no Bot API URL and secret entered, the plugin makes no network requests at all.
+
+### Screenshot submissions — manual only
+
+Sent only when you press the submit button. Nothing is captured or uploaded automatically.
+
+### XP & rank lookup
+
+Sends your RuneScape name to the clan bot to look up your own rank and XP.
+
+### Clan chat bridge — ON by default
+
+When enabled, clan chat messages you can see are sent to the clan server so they can be mirrored into Discord. This includes:
+
+- the sender's RuneScape name
+- their message text
+- their clan rank
+
+Only Tyr's Guard clan chat is included. **Private messages, friends chat, and public chat are never sent.** Turn the bridge off in settings if you do not want clan chat relayed.
+
+### Location sharing — OFF by default
+
+When you explicitly enable **Share my location**, the plugin sends:
+
+- your RuneScape name
+- your in-game coordinates
+- your world number
+- your clan rank title
+- a coarse activity label derived from your current animation (e.g. "Training Mining")
+
+Nothing else is sent, and nothing is sent at all while the setting is off.
+
+Locations are held in memory on the server, are visible only to other Tyr's Guard members, and expire automatically about 60 seconds after your last update. They are not written to a database or retained long-term.
+
+**Location is never sent while you are in the Wilderness or on a PvP world.** This is enforced in code independently of your settings.
 
 ---
 
-## Setup Instructions
+## Setup
 
-### Step 1 — Get your configuration details from clan staff
-You will need the following from a Tyr's Guard staff member:
-- The clan bot's API URL
-- The plugin API secret key
+You need two things from a Tyr's Guard staff member:
 
-### Step 2 — Find your Discord ID
-1. Open Discord
-2. Go to Settings → Advanced → Enable **Developer Mode**
-3. Right-click your name anywhere in the Tyr's Guard Discord server
-4. Click **Copy User ID**
+- the clan bot's **API URL**
+- the **API secret**
 
-### Step 3 — Configure the plugin in RuneLite
+Then:
+
 1. Install the plugin from the RuneLite Plugin Hub
 2. Open the plugin settings (wrench icon next to the plugin)
-3. Fill in the following fields:
-   - **Bot API URL** — provided by clan staff
-   - **Plugin API Secret** — provided by clan staff
-   - **Discord ID** — your Discord user ID from Step 2
-4. Optionally enable or disable the **Chat Bridge** toggle depending on whether you want clan chat bridged to Discord
+3. Fill in **Bot API URL** and **API Secret**
+4. Optionally turn the **Chat Bridge** off, or turn **Share my location** on
 
-### Step 4 — You're all set
-Open the plugin panel by clicking the Tyr's Guard icon in the RuneLite sidebar. You can now submit screenshots, view your XP and rank, and use the clan chat bridge if enabled.
+That's it — your rank and XP are looked up from your RuneScape name automatically.
 
 ---
 
 ## Configuration Options
 
 | Setting | Description | Required |
-|---|---|---|
-| Bot API URL | The URL of the Tyr's Guard clan bot | Yes |
-| Plugin API Secret | Secret key to authenticate with the bot | Yes |
-| Discord ID | Your Discord user ID | Yes |
-| Enable Chat Bridge | Toggle clan chat ↔ Discord bridging on or off | Optional |
+| --- | --- | --- |
+| Bot API URL | URL of the Tyr's Guard clan bot | **Yes** |
+| API Secret | Secret key to authenticate with the bot | **Yes** |
+| Your Discord ID | Only needed to load your rank while logged out | No |
+| Enable Chat Bridge | Bridge clan chat ↔ Discord (default: **on**) | No |
+| Share my location | Show yourself on the clan map (default: **off**) | No |
+| Clan Map — API URL / Secret | Leave blank; reuses the Bot API settings above | No |
+
+---
+
+## Third-Party Content
+
+The clan rank icons are taken from [runelite-live-friend-locations-plugin](https://github.com/TiboDeMunck/runelite-live-friend-locations-plugin) (BSD-2-Clause). See `THIRD-PARTY-NOTICES.md` for the retained copyright and licence text.
+
+Rank icons depict Old School RuneScape clan rank sprites, which are the intellectual property of Jagex Ltd. This plugin is not affiliated with or endorsed by Jagex Ltd.
 
 ---
 
 ## Support
 
-If you have issues with the plugin, reach out to Tyr's Guard staff in the clan Discord. This plugin is maintained by the clan and is not officially supported by RuneLite.
+For issues with the plugin, reach out to Tyr's Guard staff in the clan Discord. This plugin is maintained by the clan and is not officially supported by RuneLite.
+
+## Licence
+
+BSD-2-Clause. See `LICENSE`.
