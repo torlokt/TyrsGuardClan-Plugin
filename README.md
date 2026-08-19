@@ -8,9 +8,15 @@ A RuneLite plugin built exclusively for members of the **Tyr's Guard** OSRS clan
 
 ## Features
 
-### 📸 Screenshot Submissions
+### 🔗 Quick Links
 
-Submit screenshots directly from RuneLite to the clan's Discord submissions channel. Screenshots are stamped with your local date and time, along with CST and GMT conversions, so staff can verify submissions across time zones.
+The plugin panel header has three buttons that open in your browser:
+
+| Button | Opens |
+| --- | --- |
+| Discord | https://discord.gg/tyrsguard |
+| Website | https://tyrsguard.com |
+| Support The Clan | https://tyrsguard.com/support |
 
 ### ⚔️ XP & Rank Tracking
 
@@ -39,10 +45,6 @@ This plugin communicates with a private server operated by Tyr's Guard clan lead
 ### Nothing is sent until configured
 
 With no Bot API URL and secret entered, the plugin makes no network requests at all.
-
-### Screenshot submissions — manual only
-
-Sent only when you press the submit button. Nothing is captured or uploaded automatically.
 
 ### XP & rank lookup
 
